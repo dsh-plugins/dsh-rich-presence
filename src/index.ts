@@ -5,11 +5,16 @@
  * events, so a reopened session shows the same thing it showed before, and no
  * second copy of the transcript is kept in memory.
  *
+ * Every configuration group is a volatile reference, so the plugin page can
+ * save a change without a restart: the loader commits the new values into those
+ * references and this module rebuilds only the pipeline layer that changed.
+ *
  * @module dsh-rich-presence
  */
 
 import z from '@deepseek-ai/schemastery'
-import type { Context } from '@deepseek-ai/cordis'
+import type { Context, Volatile } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-settings'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { ProjectionHandle, ProjectionKeySelection } from '@deepseek-ai/dsh-session-projection'
@@ -18,83 +23,59 @@ import { DiscordClient, type ClientConfig } from './discord/client.ts'
 import type { ClientLogger } from './discord/client.ts'
 import { FocusTracker, countSubagents, snapshotOf, type ProjectionReadout } from './focus.ts'
 import { Publisher, LogTransport, type Transport } from './publish.ts'
-import { renderActivity, type ActivityPayload, type RenderConfig, type UsageTotals } from './render.ts'
+import { renderActivity, type ActivityPayload, type UsageTotals } from './render.ts'
+import {
+  DEFAULT_KEYS,
+  DEFAULTS,
+  readSettings,
+  reconcileKeys,
+  renderConfigOf,
+  type ConnectionSettings,
+  type DiscordSettings,
+  type FocusSettings,
+  type PresenceSettings,
+  type PrivacySettings,
+  type SettingsSnapshot,
+  type UpdateSettings,
+} from './settings.ts'
 
 /** Cordis plugin name. */
 export const name = 'rich-presence'
 
-/** Services this plugin registers into. */
+/**
+ * Services this plugin registers into.
+ *
+ * `settings` is deliberately absent: the plugin must run in profiles that do not
+ * compose it, so the live-update listener attaches only when the service exists.
+ */
 export const inject = ['agents', 'sessionProjections']
 
 /** Discord limits `details`, `state`, and the two hover texts to 128 characters. */
 const TEXT_LIMIT = 128
 
-/** Plugin configuration, every field defaulted so the row needs no settings. */
+/**
+ * Plugin configuration, every field defaulted so the row needs no settings.
+ *
+ * Each group is declared volatile by the schema below, so the plugin page can
+ * save a change without restarting.
+ */
 export interface Config {
-  discord: {
-    /** Discord application id; empty falls back to the log transport. */
-    clientId: string
-    /** Activity type Discord renders in the "playing/listening/watching" slot. */
-    activityType: 0 | 2 | 3 | 5
-    /** Button labels and links, at most two. */
-    buttons: { label: string; url: string }[]
-  }
-  presence: {
-    /** Template for Discord's first text line. */
-    details: string
-    /** Template for Discord's second text line. */
-    state: string
-    /** Template for the large-image hover text. */
-    largeText: string
-    /** Template for the small-image hover text. */
-    smallText: string
-    /** Asset name of the large image; empty shows the application's icon area empty. */
-    largeImage: string
-    /** Asset name of the small image while the agent works. */
-    smallImageRunning: string
-    /** Asset name of the small image while the agent is idle. */
-    smallImageIdle: string
-    /** Phase wording overrides; omitted entries keep the English defaults. */
-    labels: Record<string, string>
-    /** Which start time the elapsed timer counts from. */
-    elapsed: 'session' | 'turn' | 'off'
-    /** Maximum characters per text field, capped at Discord's 128. */
-    truncateAt: number
-    /** Publish an activity when no agent is running. */
-    showWhenIdle: boolean
-  }
-  privacy: {
-    /** Display the name of the tool that is running. */
-    showToolNames: boolean
-    /** Display the base name of the session working directory. */
-    showFolder: boolean
-  }
-  focus: {
-    /** Prefer the running session, or the most recently active one. */
-    mode: 'active' | 'latest'
-    /** Allow a delegated session to be the displayed one. */
-    includeSubagents: boolean
-  }
-  connection: {
-    /** Transport to use; `auto` picks ipc when a client id is set. */
-    transport: 'auto' | 'ipc' | 'log'
-    /** Backoff floor in milliseconds. */
-    reconnectMs: number
-    /** Backoff ceiling in milliseconds. */
-    maxReconnectMs: number
-    /** Extra endpoints tried before the platform defaults. */
-    extraPipePaths: string[]
-  }
-  update: {
-    /** Quiet time after the last change before a send. */
-    debounceMs: number
-    /** Minimum spacing between two sends. */
-    minIntervalMs: number
-  }
+  /** Discord application id and card decoration. */
+  discord: Volatile<DiscordSettings>
+  /** Display templates, labels, and timers. */
+  presence: Volatile<PresenceSettings>
+  /** What may be published publicly. */
+  privacy: Volatile<PrivacySettings>
+  /** Which live agent is displayed. */
+  focus: Volatile<FocusSettings>
+  /** Transport and reconnect behaviour. */
+  connection: Volatile<ConnectionSettings>
+  /** Publish rate limits. */
+  update: Volatile<UpdateSettings>
 }
 
 /** Schemastery validation; invalid values fail at load. */
-export const Config: z<Config> = z.object({
+export const Config = z.object({
   discord: z.object({
     clientId: z.string().default('')
       .description('Discord application id. Empty keeps the plugin running with the log transport.'),
@@ -105,16 +86,16 @@ export const Config: z<Config> = z.object({
       url: z.string(),
     })).default([])
       .description('At most two buttons shown on the activity card.'),
-  }).default({}),
+  }).volatile().default({}),
   presence: z.object({
     details: z.string().min(1).default('{activity} · {folder}')
       .description('Template for the first text line.'),
     state: z.string().min(1).default('{model} · {context} · {tokens}')
       .description('Template for the second text line.'),
     largeText: z.string().default('{progress}')
-      .description('Template for the large-image hover text. Discord shows it only when presence.largeImage names an uploaded asset.'),
+      .description('Template for the large-image hover text.'),
     smallText: z.string().default('{activity} · {subagents}')
-      .description('Template for the small-image hover text. Discord shows it only when a presence.smallImage* name is set.'),
+      .description('Template for the small-image hover text.'),
     largeImage: z.string().default('')
       .description('Asset name of the large image, uploaded to the Discord application.'),
     smallImageRunning: z.string().default('')
@@ -129,19 +110,19 @@ export const Config: z<Config> = z.object({
       .description('Maximum characters per text field.'),
     showWhenIdle: z.boolean().default(true)
       .description('Publish an activity when no agent is running.'),
-  }).default({}),
+  }).volatile().default({}),
   privacy: z.object({
     showToolNames: z.boolean().default(true)
       .description('Display the name of the running tool.'),
     showFolder: z.boolean().default(true)
       .description('Display the base name of the session working directory.'),
-  }).default({}),
+  }).volatile().default({}),
   focus: z.object({
     mode: z.union(['active', 'latest']).default('active')
       .description('Prefer the running session, or the most recently active one.'),
     includeSubagents: z.boolean().default(false)
       .description('Allow a delegated session to be the displayed one.'),
-  }).default({}),
+  }).volatile().default({}),
   connection: z.object({
     transport: z.union(['auto', 'ipc', 'log']).default('auto')
       .description('Transport to use; auto picks ipc when a client id is set.'),
@@ -151,13 +132,13 @@ export const Config: z<Config> = z.object({
       .description('Backoff ceiling in milliseconds.'),
     extraPipePaths: z.array(z.string()).default([])
       .description('Extra Discord IPC endpoints tried before the platform defaults.'),
-  }).default({}),
+  }).volatile().default({}),
   update: z.object({
     debounceMs: z.number().min(0).default(400)
       .description('Quiet time after the last change before a send.'),
     minIntervalMs: z.number().min(0).default(15_000)
       .description('Minimum spacing between two sends.'),
-  }).default({}),
+  }).volatile().default({}),
 })
 
 /** Selected transport plus the hooks the plugin needs to drive it. */
@@ -238,15 +219,16 @@ function readUsage(value: unknown): UsageTotals | undefined {
 }
 
 /**
- * Choose the transport from configuration and the presence of a client id.
- * @param config - validated plugin configuration.
+ * Choose the transport from one configuration snapshot.
+ * @param settings - the current configuration.
  * @param logger - destination for connection outcomes.
  * @returns the transport and the client driving it, when one exists.
  */
-function chooseTransport(config: Config, logger: ClientLogger): ChosenTransport {
-  const clientId = config.discord.clientId.trim()
-  const wantsIpc = config.connection.transport === 'ipc'
-    || (config.connection.transport === 'auto' && clientId.length > 0)
+function chooseTransport(settings: SettingsSnapshot, logger: ClientLogger): ChosenTransport {
+  const { connection, discord } = settings
+  const clientId = discord.clientId.trim()
+  const wantsIpc = connection.transport === 'ipc'
+    || (connection.transport === 'auto' && clientId.length > 0)
   if (!wantsIpc) return { transport: new LogTransport(logger, 'no discord.clientId configured'), label: 'log' }
   if (clientId.length === 0) {
     logger.warn('rich-presence: connection.transport is "ipc" but discord.clientId is empty; falling back to the log transport')
@@ -254,9 +236,9 @@ function chooseTransport(config: Config, logger: ClientLogger): ChosenTransport 
   }
   const clientConfig: ClientConfig = {
     clientId,
-    reconnectMs: config.connection.reconnectMs,
-    maxReconnectMs: config.connection.maxReconnectMs,
-    extraPipePaths: config.connection.extraPipePaths,
+    reconnectMs: connection.reconnectMs,
+    maxReconnectMs: connection.maxReconnectMs,
+    extraPipePaths: connection.extraPipePaths,
   }
   // Report the first outage of each cycle once, at warning level: a user whose
   // Discord client is closed otherwise sees an unchanged profile and no clue.
@@ -271,8 +253,8 @@ function chooseTransport(config: Config, logger: ClientLogger): ChosenTransport 
       unreachableWarned = true
       logger.warn(
         'rich-presence: cannot reach a running Discord desktop client; retrying in the background every %d–%d ms',
-        config.connection.reconnectMs,
-        config.connection.maxReconnectMs,
+        connection.reconnectMs,
+        connection.maxReconnectMs,
       )
     }
   })
@@ -282,18 +264,177 @@ function chooseTransport(config: Config, logger: ClientLogger): ChosenTransport 
 /**
  * Attach the payload decoration Discord accepts but no template produces.
  * @param activity - the rendered text fields.
- * @param config - validated plugin configuration.
- * @returns the activity, or `undefined` when nothing should be sent.
+ * @param settings - the current configuration.
+ * @returns the activity, or `null` when nothing should be sent.
  */
-function decorate(activity: ActivityPayload | undefined, config: Config): ActivityPayload | null {
+function decorate(activity: ActivityPayload | undefined, settings: SettingsSnapshot): ActivityPayload | null {
   if (activity === undefined) return null
-  const buttons = config.discord.buttons
+  const buttons = settings.discord.buttons
     .filter(button => button.label.length > 0 && /^https?:\/\//.test(button.url))
     .slice(0, 2)
   return {
-    type: config.discord.activityType,
+    type: settings.discord.activityType,
     ...activity,
     ...buttons.length === 0 ? {} : { buttons },
+  }
+}
+
+/**
+ * The live publish pipeline: the transport, the publisher, and the projection
+ * handle whose data both consume.
+ *
+ * A configuration save rebuilds the layers that the change invalidates — the
+ * Discord connection, the rate limiter, or nothing but the card — so a template
+ * edit never drops a working connection.
+ */
+class Pipeline {
+  private chosen: ChosenTransport
+  private publisher: Publisher
+  private settings: SettingsSnapshot
+  private keys = DEFAULT_KEYS
+  private handle: ProjectionHandle<ActivityState> | undefined
+  private readonly ctx: Context
+  private readonly focus: FocusTracker
+  private readonly logger: ReturnType<Context['logger']>
+
+  /**
+   * @param ctx - plugin context, used for the registry and the agent list.
+   * @param focus - the tracked live agents.
+   * @param logger - where connection and render failures are reported.
+   * @param settings - the configuration snapshot to build from.
+   */
+  constructor(
+    ctx: Context,
+    focus: FocusTracker,
+    logger: ReturnType<Context['logger']>,
+    settings: SettingsSnapshot,
+  ) {
+    this.ctx = ctx
+    this.focus = focus
+    this.logger = logger
+    this.settings = settings
+    this.chosen = chooseTransport(settings, this.logger)
+    this.publisher = this.createPublisher()
+    this.keys = reconcileKeys(settings)
+    this.chosen.client?.start()
+    if (this.chosen.label === 'log' && settings.discord.clientId.trim().length === 0) {
+      this.logger.info(
+        'rich-presence: no discord.clientId configured; activities are written to this log. Set discord.clientId to a Discord application id to publish them.',
+      )
+    }
+  }
+
+  /** Read the selected agent's projection state, tolerating a not-yet-registered unit. */
+  private activityOf(session: Session): ActivityState | undefined {
+    try {
+      return this.handle?.stateOf(session)
+    } catch (error) {
+      this.logger.debug('rich-presence: cannot read activity state: %o', error)
+      return undefined
+    }
+  }
+
+  /** Build a publisher over the current transport and rate limits. */
+  private createPublisher(): Publisher {
+    return new Publisher(
+      this.settings.update,
+      this.chosen.transport,
+      Date.now,
+      error => this.logger.warn('rich-presence: cannot render an activity: %o', error),
+    )
+  }
+
+  /**
+   * Attach the activity projection once the registry accepts it.
+   * @param ctx - plugin context owning the registration.
+   */
+  registerProjection(ctx: Context): void {
+    let disposed = false
+    void ctx.sessionProjections.register(activityProjection()).then(
+      registered => {
+        if (disposed) {
+          void registered.dispose()
+          return
+        }
+        this.handle = registered
+        this.refresh()
+      },
+      (error: unknown) => {
+        this.logger.warn('rich-presence: cannot register the activity projection: %o', error)
+      },
+    )
+    ctx.effect(() => () => {
+      disposed = true
+    }, 'rich-presence: activity projection owner')
+  }
+
+  /** Produce the activity that should be displayed right now. */
+  private resolve(): ActivityPayload | null {
+    const { focus, privacy, presence } = this.settings
+    const agent = this.focus.select(focus.mode, focus.includeSubagents)
+    if (agent === undefined) {
+      if (!presence.showWhenIdle) return null
+      // With no agent at all, the honest card is the same one an idle agent
+      // shows: the presence is on, nothing is running.
+      return decorate(renderActivity({ phase: 'idle', subagents: 0 }, renderConfigOf(this.settings), false, false), this.settings)
+    }
+    const activity = this.activityOf(agent.session)
+    if (activity === undefined) return null
+    const snapshot = snapshotOf(
+      agent,
+      activity,
+      readTokens(this.ctx, agent.session),
+      countSubagents(this.focus.ranked(), agent),
+    )
+    return decorate(
+      renderActivity(snapshot, renderConfigOf(this.settings), privacy.showToolNames, privacy.showFolder),
+      this.settings,
+    )
+  }
+
+  /** Recompute and, if it changed, publish. */
+  refresh(): void {
+    this.publisher.offer(() => this.resolve())
+  }
+
+  /**
+   * Apply a new configuration snapshot.
+   *
+   * Only the layers whose own key moved are rebuilt, and the card is always
+   * recomputed last so the person sees the new wording immediately.
+   *
+   * @param settings - the configuration as it now reads.
+   */
+  reconfigure(settings: SettingsSnapshot): void {
+    const next = reconcileKeys(settings)
+    const reconnect = next.transport !== this.keys.transport
+    const rethrottle = next.update !== this.keys.update
+    const hadClient = this.chosen.client !== undefined
+    this.settings = settings
+    this.keys = next
+
+    if (reconnect) {
+      this.chosen.client?.dispose()
+      this.chosen = chooseTransport(settings, this.logger)
+      this.chosen.client?.start()
+      // The publisher holds the old transport, so a reconnect always implies a
+      // new publisher even when the rate limits did not move.
+      this.publisher.dispose()
+      this.publisher = this.createPublisher()
+    } else if (rethrottle) {
+      this.publisher.dispose()
+      this.publisher = this.createPublisher()
+    }
+    if (reconnect && hadClient && this.chosen.label === 'log') {
+      this.logger.info('rich-presence: now writing activities to this log instead of Discord')
+    }
+    this.refresh()
+  }
+
+  /** Release the connection and the publisher. */
+  dispose(): void {
+    this.publisher.dispose()
+    this.chosen.client?.dispose()
   }
 }
 
@@ -304,96 +445,24 @@ function decorate(activity: ActivityPayload | undefined, config: Config): Activi
  */
 export function apply(ctx: Context, config: Config): void {
   const logger = ctx.logger('rich-presence')
-  const chosen = chooseTransport(config, logger)
   const focus = new FocusTracker()
-  const publisher = new Publisher(
-    config.update,
-    chosen.transport,
-    Date.now,
-    error => logger.warn('rich-presence: cannot render an activity: %o', error),
-  )
-  const renderConfig: RenderConfig = {
-    details: config.presence.details,
-    state: config.presence.state,
-    largeText: config.presence.largeText,
-    smallText: config.presence.smallText,
-    largeImage: config.presence.largeImage,
-    smallImageRunning: config.presence.smallImageRunning,
-    smallImageIdle: config.presence.smallImageIdle,
-    labels: config.presence.labels,
-    elapsed: config.presence.elapsed,
-    truncateAt: config.presence.truncateAt,
-    showWhenIdle: config.presence.showWhenIdle,
+  const pipeline = new Pipeline(ctx, focus, logger, readSettings(config))
+
+  ctx.effect(() => () => pipeline.dispose(), 'rich-presence: pipeline')
+
+  pipeline.registerProjection(ctx)
+
+  const refresh = (): void => pipeline.refresh()
+
+  // A volatile save reaches the running plugin through the loader; this event
+  // reports the entry's new revision, and the pipeline reads the committed
+  // values itself. Without the settings service the configuration is static.
+  if (ctx.get('settings') !== undefined) {
+    ctx.on('settings/document-updated', (namespace) => {
+      if (namespace !== name) return
+      pipeline.reconfigure(readSettings(config))
+    })
   }
-
-  let handle: ProjectionHandle<ActivityState> | undefined
-
-  /** Read the selected agent's projection state, tolerating a not-yet-registered unit. */
-  const activityOf = (session: Session): ActivityState | undefined => {
-    try {
-      return handle?.stateOf(session)
-    } catch (error) {
-      logger.debug('rich-presence: cannot read activity state: %o', error)
-      return undefined
-    }
-  }
-
-  /** Produce the activity that should be displayed right now. */
-  const resolve = (): ActivityPayload | null => {
-    const agent = focus.select(config.focus.mode, config.focus.includeSubagents)
-    if (agent === undefined) {
-      if (!config.presence.showWhenIdle) return null
-      // With no agent at all, the honest card is the same one an idle agent
-      // shows: the presence is on, nothing is running.
-      return decorate(renderActivity({ phase: 'idle', subagents: 0 }, renderConfig, false, false), config)
-    }
-    const activity = activityOf(agent.session)
-    if (activity === undefined) return null
-    const snapshot = snapshotOf(
-      agent,
-      activity,
-      readTokens(ctx, agent.session),
-      countSubagents(focus.ranked(), agent),
-    )
-    return decorate(
-      renderActivity(snapshot, renderConfig, config.privacy.showToolNames, config.privacy.showFolder),
-      config,
-    )
-  }
-
-  /** Recompute and, if it changed, publish. */
-  const refresh = (): void => {
-    publisher.offer(resolve)
-  }
-
-  if (chosen.client !== undefined) {
-    ctx.effect(() => {
-      chosen.client?.start()
-      return () => chosen.client?.dispose()
-    }, 'rich-presence: discord connection')
-  }
-
-  ctx.effect(() => () => publisher.dispose(), 'rich-presence: publisher')
-
-  ctx.effect(() => {
-    let disposed = false
-    void ctx.sessionProjections.register(activityProjection()).then(
-      registered => {
-        if (disposed) {
-          void registered.dispose()
-          return
-        }
-        handle = registered
-        refresh()
-      },
-      (error: unknown) => {
-        logger.warn('rich-presence: cannot register the activity projection: %o', error)
-      },
-    )
-    return () => {
-      disposed = true
-    }
-  }, 'rich-presence: activity projection')
 
   const track = (agent: Agent): void => {
     focus.track(agent)
@@ -421,13 +490,11 @@ export function apply(ctx: Context, config: Config): void {
 
   for (const agent of ctx.agents.list()) track(agent)
 
-  if (chosen.label === 'log') {
-    logger.info(
-      'rich-presence: no discord.clientId configured; activities are written to this log. Set discord.clientId to a Discord application id to publish them.',
-    )
-  }
   refresh()
 }
 
 /** Re-exported so the locale resource and the plugin row share one key. */
 export { ACTIVITY_KEY }
+
+/** Re-exported for the plugin page's copy of the defaults. */
+export { DEFAULTS }

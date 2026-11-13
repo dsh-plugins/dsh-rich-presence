@@ -9,6 +9,7 @@
       "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
     },
+    "./client": "./client.js",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg"
   },
@@ -16,6 +17,7 @@
     "lib/**/*.js",
     "lib/**/*.d.ts",
     "src/**/*.ts",
+    "client.js",
     "cordis.patch.yml",
     "locale/*.json",
     "docs",
@@ -36,10 +38,14 @@
     "@deepseek-ai/dsh-session": "^0.2.2-rc.2",
     "@deepseek-ai/dsh-session-projection": "^0.2.2-rc.2",
     "@deepseek-ai/dsh-token-meter": "^0.2.2-rc.2",
-    "@deepseek-ai/schemastery": "~3.19.0"
+    "@deepseek-ai/schemastery": "~3.19.0",
+    "@deepseek-ai/dsh-settings": "^0.2.2-rc.2"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-token-meter": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-settings": {
       "optional": true
     }
   },
@@ -48,6 +54,7 @@
     "@deepseek-ai/dsh-agent": "0.2.2-rc.2",
     "@deepseek-ai/dsh-session": "0.2.2-rc.2",
     "@deepseek-ai/dsh-session-projection": "0.2.2-rc.2",
+    "@deepseek-ai/dsh-settings": "^0.2.2-rc.2",
     "@deepseek-ai/dsh-token-meter": "0.2.2-rc.2",
     "@deepseek-ai/schemastery": "3.19.0",
     "@types/node": "^22.20.5",
@@ -59,6 +66,14 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-plugin-manager"
+      ]
     }
   }
 }

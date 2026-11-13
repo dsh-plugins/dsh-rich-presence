@@ -54,6 +54,16 @@ small_text = Running bash
 
 兼容版本：DSH `>=0.2.2-rc.2 <0.3.0`。
 
+## 在应用里配置（推荐）
+
+打开 **Plugins → Installed plugins → Rich presence**，在描述下方就是配置表单：Discord、显示、隐私、聚焦、连接、限流六组，改完点 **保存**。
+
+- **保存即时生效，不需要重启**：所有配置组都是 `volatile` 的，loader 会把新值直接提交给运行中的插件。
+- 只重建受影响的部分：改模板只重画卡片，改上游号/传输方式才重连 Discord，改限流才换发布器——不会因为改一行文案就断连接。
+- 字段清空后回到继承值（profile patch 里写的值或内置默认）。
+- profile 不接受写入、或该项被更高优先级的层（home patch / 命令行）覆盖时，表单只读并说明原因，**不会假装保存成功**。
+- 这个 profile 没有挂载 `ui-settings` 时不会出现配置区，此时只能改 `cordis.patch.yml`（下面还有一段手写配置的说明）。
+
 ## 先跑起来（不需要 Discord 应用）
 
 默认 `discord.clientId` 为空，插件**不会连接 Discord**，而是把将要发送的完整 JSON 载荷写进日志：
@@ -72,8 +82,12 @@ rich-presence (log transport, no discord.clientId): {"type":0,"details":"Thinkin
 
 1. 打开 <https://discord.com/developers/applications>，点 **New Application**，起个名字（这个名字会显示成 "*Playing* **名字**"）。
 2. 在 **General Information** 里复制 **Application ID**（纯数字，不是 client secret，也不是 token）。
-3. 想让卡片出现图片和悬停文字的话，去 **Rich Presence → Art Assets** 上传图片，把图片名（不是文件名之外的别的东西，就是上传时填的名字）填进 `presence.largeImage` / `presence.smallImageRunning` / `presence.smallImageIdle`。**名字必须和已上传资产完全一致**，否则 Discord 会把图连同悬停文字一起丢掉，而插件这边不会有报错。
-4. 在本 profile 的 `cordis.patch.yml` 里给这一行加配置：
+3. 想让卡片出现图片和悬停文字的话，去 **Rich Presence → Art Assets** 上传图片，把上传时填的图片名填进表单里「大图资产名」/「运行中的小图」/「空闲时的小图」。**名字必须和已上传资产完全一致**，否则 Discord 会把图丢掉而插件这边不会有报错。
+4. 回到 **Plugins → Rich presence**，把 **应用 ID** 填进去，**保存**。
+
+保存后会立刻连上 Discord（不用重启），日志出现 `connected to the discord client`，资料页上出现活动卡片。
+
+如果不用表单，也可以手写 `cordis.patch.yml`（两种方式等价，表单保存的就是同一份配置）：
 
 ```yaml
 - id: rich-presence
@@ -83,15 +97,13 @@ rich-presence (log transport, no discord.clientId): {"type":0,"details":"Thinkin
       clientId: '123456789012345678'
 ```
 
-5. 保存后让这一行重新生效（在 **Plugins** 里关掉再打开即可；重新启动 `dsh` 一定生效），日志出现 `connected to the discord client`，Discord 个人资料上出现活动卡片。
-
-**Application ID 写错**时 Discord 会以 `4000 Invalid Client ID` 关闭连接：插件记一条明确的警告并**停止重试**（重试永远也修不好一个错的 ID），改对配置后重载即可。
+**Application ID 写错**时 Discord 会以 `4000 Invalid Client ID` 关闭连接：插件记一条明确的警告并**停止重试**（重试永远也修不好一个错的 ID）。在表单里改对再保存即可，不用重启。
 
 **Discord 没开或没登录**时连不上，插件每个重连周期只警告一次（`cannot reach a running Discord desktop client`），然后按退避继续尝试；Discord 打开后会自动接上。
 
-## 配置
+## 配置参考
 
-所有字段都有默认值，整行可以只写 `discord.clientId`。
+表单里的每一项与下面的字段一一对应；也可以直接写 `cordis.patch.yml`。所有字段都有默认值，整行可以只写 `discord.clientId`。
 
 | 字段 | 默认 | 说明 |
 |---|---|---|
@@ -168,6 +180,9 @@ rich-presence (log transport, no discord.clientId): {"type":0,"details":"Thinkin
 ## 已知边界
 
 - 已实测（本机 Discord 桌面客户端，app id `1570848316290498590`）：握手 READY，`SET_ACTIVITY` 被接受并原样回显 details / state / timestamps / assets 四个字段，活动名取自应用名。未验证的只剩**肉眼观感**（卡片在你的资料页上长什么样），因为这里没有截图能力。
+- **配置表单的页面渲染未验证**：没有浏览器控制权。已验证的是接线与数据契约——注册进官方 `plugins.bundle.config`、槽键等于包名、六个配置组都能被 `dsh-settings` 的 `volatileForm` 投影出来（也就是 namespace 会发布、能保存）、写完由 `settings/document-updated` 触发重建。
+- 配置项声明为 `volatile`，所以保存不重启插件；代价是 Host 必须自己响应变更——这也是为什么 `index.ts` 会按 `transport` / `update` / `render` 三层分别重建。
+- 这个 profile 没有挂载 `ui-settings` 时不会出现配置区，`cordis.patch.yml` 仍是唯一入口，插件其余功能不受影响。
 - `minIntervalMs` 较大时会话结束后的最后一次更新可能晚一点发出（最多一个间隔），这是限流的必然代价。
 - Discord 关闭后插件按指数退避重连（5s → 60s 封顶），每个掉线周期只警告一次，不刷屏；两个 DSH 同时在线时各自独立连接，后写者生效，这是 Discord 的语义。
 - 卡片文字默认英文；用 `presence.labels` 覆盖即可，见上一节。

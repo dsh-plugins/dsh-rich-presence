@@ -5,83 +5,205 @@
  * events, so a reopened session shows the same thing it showed before, and no
  * second copy of the transcript is kept in memory.
  *
+ * Every configuration group is a volatile reference, so the plugin page can
+ * save a change without a restart: the loader commits the new values into those
+ * references and this module rebuilds only the pipeline layer that changed.
+ *
  * @module dsh-rich-presence
  */
 import z from '@deepseek-ai/schemastery';
-import type { Context } from '@deepseek-ai/cordis';
+import type { Context, Volatile } from '@deepseek-ai/cordis';
 import { ACTIVITY_KEY } from './activity.ts';
+import { DEFAULTS, type ConnectionSettings, type DiscordSettings, type FocusSettings, type PresenceSettings, type PrivacySettings, type UpdateSettings } from './settings.ts';
 /** Cordis plugin name. */
 export declare const name = "rich-presence";
-/** Services this plugin registers into. */
+/**
+ * Services this plugin registers into.
+ *
+ * `settings` is deliberately absent: the plugin must run in profiles that do not
+ * compose it, so the live-update listener attaches only when the service exists.
+ */
 export declare const inject: string[];
-/** Plugin configuration, every field defaulted so the row needs no settings. */
+/**
+ * Plugin configuration, every field defaulted so the row needs no settings.
+ *
+ * Each group is declared volatile by the schema below, so the plugin page can
+ * save a change without restarting.
+ */
 export interface Config {
-    discord: {
-        /** Discord application id; empty falls back to the log transport. */
-        clientId: string;
-        /** Activity type Discord renders in the "playing/listening/watching" slot. */
-        activityType: 0 | 2 | 3 | 5;
-        /** Button labels and links, at most two. */
-        buttons: {
-            label: string;
-            url: string;
-        }[];
-    };
-    presence: {
-        /** Template for Discord's first text line. */
-        details: string;
-        /** Template for Discord's second text line. */
-        state: string;
-        /** Template for the large-image hover text. */
-        largeText: string;
-        /** Template for the small-image hover text. */
-        smallText: string;
-        /** Asset name of the large image; empty shows the application's icon area empty. */
-        largeImage: string;
-        /** Asset name of the small image while the agent works. */
-        smallImageRunning: string;
-        /** Asset name of the small image while the agent is idle. */
-        smallImageIdle: string;
-        /** Phase wording overrides; omitted entries keep the English defaults. */
-        labels: Record<string, string>;
-        /** Which start time the elapsed timer counts from. */
-        elapsed: 'session' | 'turn' | 'off';
-        /** Maximum characters per text field, capped at Discord's 128. */
-        truncateAt: number;
-        /** Publish an activity when no agent is running. */
-        showWhenIdle: boolean;
-    };
-    privacy: {
-        /** Display the name of the tool that is running. */
-        showToolNames: boolean;
-        /** Display the base name of the session working directory. */
-        showFolder: boolean;
-    };
-    focus: {
-        /** Prefer the running session, or the most recently active one. */
-        mode: 'active' | 'latest';
-        /** Allow a delegated session to be the displayed one. */
-        includeSubagents: boolean;
-    };
-    connection: {
-        /** Transport to use; `auto` picks ipc when a client id is set. */
-        transport: 'auto' | 'ipc' | 'log';
-        /** Backoff floor in milliseconds. */
-        reconnectMs: number;
-        /** Backoff ceiling in milliseconds. */
-        maxReconnectMs: number;
-        /** Extra endpoints tried before the platform defaults. */
-        extraPipePaths: string[];
-    };
-    update: {
-        /** Quiet time after the last change before a send. */
-        debounceMs: number;
-        /** Minimum spacing between two sends. */
-        minIntervalMs: number;
-    };
+    /** Discord application id and card decoration. */
+    discord: Volatile<DiscordSettings>;
+    /** Display templates, labels, and timers. */
+    presence: Volatile<PresenceSettings>;
+    /** What may be published publicly. */
+    privacy: Volatile<PrivacySettings>;
+    /** Which live agent is displayed. */
+    focus: Volatile<FocusSettings>;
+    /** Transport and reconnect behaviour. */
+    connection: Volatile<ConnectionSettings>;
+    /** Publish rate limits. */
+    update: Volatile<UpdateSettings>;
 }
 /** Schemastery validation; invalid values fail at load. */
-export declare const Config: z<Config>;
+export declare const Config: z<Schemastery.ObjectS<NoInfer<{
+    discord: z<NoInfer<Schemastery.ObjectS<NoInfer<{
+        clientId: z<string, string, "defined">;
+        activityType: z<0 | 2 | 3 | 5, 0 | 2 | 3 | 5, "defined">;
+        buttons: z<({
+            label?: string | null | undefined;
+            url?: string | null | undefined;
+        } & import("@deepseek-ai/cosmokit").Dict)[], Schemastery.ObjectT<NoInfer<{
+            label: z<string, string, "plain">;
+            url: z<string, string, "plain">;
+        }>>[], "defined">;
+    }>>>, NoInfer<Schemastery.ObjectT<NoInfer<{
+        clientId: z<string, string, "defined">;
+        activityType: z<0 | 2 | 3 | 5, 0 | 2 | 3 | 5, "defined">;
+        buttons: z<({
+            label?: string | null | undefined;
+            url?: string | null | undefined;
+        } & import("@deepseek-ai/cosmokit").Dict)[], Schemastery.ObjectT<NoInfer<{
+            label: z<string, string, "plain">;
+            url: z<string, string, "plain">;
+        }>>[], "defined">;
+    }>>>, "volatile-defined">;
+    presence: z<NoInfer<Schemastery.ObjectS<NoInfer<{
+        details: z<string, string, "defined">;
+        state: z<string, string, "defined">;
+        largeText: z<string, string, "defined">;
+        smallText: z<string, string, "defined">;
+        largeImage: z<string, string, "defined">;
+        smallImageRunning: z<string, string, "defined">;
+        smallImageIdle: z<string, string, "defined">;
+        labels: z<import("@deepseek-ai/cosmokit").Dict<string, string>, import("@deepseek-ai/cosmokit").Dict<string, string>, "defined">;
+        elapsed: z<"turn" | "session" | "off", "turn" | "session" | "off", "defined">;
+        truncateAt: z<number, number, "defined">;
+        showWhenIdle: z<boolean, boolean, "defined">;
+    }>>>, NoInfer<Schemastery.ObjectT<NoInfer<{
+        details: z<string, string, "defined">;
+        state: z<string, string, "defined">;
+        largeText: z<string, string, "defined">;
+        smallText: z<string, string, "defined">;
+        largeImage: z<string, string, "defined">;
+        smallImageRunning: z<string, string, "defined">;
+        smallImageIdle: z<string, string, "defined">;
+        labels: z<import("@deepseek-ai/cosmokit").Dict<string, string>, import("@deepseek-ai/cosmokit").Dict<string, string>, "defined">;
+        elapsed: z<"turn" | "session" | "off", "turn" | "session" | "off", "defined">;
+        truncateAt: z<number, number, "defined">;
+        showWhenIdle: z<boolean, boolean, "defined">;
+    }>>>, "volatile-defined">;
+    privacy: z<NoInfer<Schemastery.ObjectS<NoInfer<{
+        showToolNames: z<boolean, boolean, "defined">;
+        showFolder: z<boolean, boolean, "defined">;
+    }>>>, NoInfer<Schemastery.ObjectT<NoInfer<{
+        showToolNames: z<boolean, boolean, "defined">;
+        showFolder: z<boolean, boolean, "defined">;
+    }>>>, "volatile-defined">;
+    focus: z<NoInfer<Schemastery.ObjectS<NoInfer<{
+        mode: z<"active" | "latest", "active" | "latest", "defined">;
+        includeSubagents: z<boolean, boolean, "defined">;
+    }>>>, NoInfer<Schemastery.ObjectT<NoInfer<{
+        mode: z<"active" | "latest", "active" | "latest", "defined">;
+        includeSubagents: z<boolean, boolean, "defined">;
+    }>>>, "volatile-defined">;
+    connection: z<NoInfer<Schemastery.ObjectS<NoInfer<{
+        transport: z<"auto" | "ipc" | "log", "auto" | "ipc" | "log", "defined">;
+        reconnectMs: z<number, number, "defined">;
+        maxReconnectMs: z<number, number, "defined">;
+        extraPipePaths: z<string[], string[], "defined">;
+    }>>>, NoInfer<Schemastery.ObjectT<NoInfer<{
+        transport: z<"auto" | "ipc" | "log", "auto" | "ipc" | "log", "defined">;
+        reconnectMs: z<number, number, "defined">;
+        maxReconnectMs: z<number, number, "defined">;
+        extraPipePaths: z<string[], string[], "defined">;
+    }>>>, "volatile-defined">;
+    update: z<NoInfer<Schemastery.ObjectS<NoInfer<{
+        debounceMs: z<number, number, "defined">;
+        minIntervalMs: z<number, number, "defined">;
+    }>>>, NoInfer<Schemastery.ObjectT<NoInfer<{
+        debounceMs: z<number, number, "defined">;
+        minIntervalMs: z<number, number, "defined">;
+    }>>>, "volatile-defined">;
+}>>, Schemastery.ObjectT<NoInfer<{
+    discord: z<NoInfer<Schemastery.ObjectS<NoInfer<{
+        clientId: z<string, string, "defined">;
+        activityType: z<0 | 2 | 3 | 5, 0 | 2 | 3 | 5, "defined">;
+        buttons: z<({
+            label?: string | null | undefined;
+            url?: string | null | undefined;
+        } & import("@deepseek-ai/cosmokit").Dict)[], Schemastery.ObjectT<NoInfer<{
+            label: z<string, string, "plain">;
+            url: z<string, string, "plain">;
+        }>>[], "defined">;
+    }>>>, NoInfer<Schemastery.ObjectT<NoInfer<{
+        clientId: z<string, string, "defined">;
+        activityType: z<0 | 2 | 3 | 5, 0 | 2 | 3 | 5, "defined">;
+        buttons: z<({
+            label?: string | null | undefined;
+            url?: string | null | undefined;
+        } & import("@deepseek-ai/cosmokit").Dict)[], Schemastery.ObjectT<NoInfer<{
+            label: z<string, string, "plain">;
+            url: z<string, string, "plain">;
+        }>>[], "defined">;
+    }>>>, "volatile-defined">;
+    presence: z<NoInfer<Schemastery.ObjectS<NoInfer<{
+        details: z<string, string, "defined">;
+        state: z<string, string, "defined">;
+        largeText: z<string, string, "defined">;
+        smallText: z<string, string, "defined">;
+        largeImage: z<string, string, "defined">;
+        smallImageRunning: z<string, string, "defined">;
+        smallImageIdle: z<string, string, "defined">;
+        labels: z<import("@deepseek-ai/cosmokit").Dict<string, string>, import("@deepseek-ai/cosmokit").Dict<string, string>, "defined">;
+        elapsed: z<"turn" | "session" | "off", "turn" | "session" | "off", "defined">;
+        truncateAt: z<number, number, "defined">;
+        showWhenIdle: z<boolean, boolean, "defined">;
+    }>>>, NoInfer<Schemastery.ObjectT<NoInfer<{
+        details: z<string, string, "defined">;
+        state: z<string, string, "defined">;
+        largeText: z<string, string, "defined">;
+        smallText: z<string, string, "defined">;
+        largeImage: z<string, string, "defined">;
+        smallImageRunning: z<string, string, "defined">;
+        smallImageIdle: z<string, string, "defined">;
+        labels: z<import("@deepseek-ai/cosmokit").Dict<string, string>, import("@deepseek-ai/cosmokit").Dict<string, string>, "defined">;
+        elapsed: z<"turn" | "session" | "off", "turn" | "session" | "off", "defined">;
+        truncateAt: z<number, number, "defined">;
+        showWhenIdle: z<boolean, boolean, "defined">;
+    }>>>, "volatile-defined">;
+    privacy: z<NoInfer<Schemastery.ObjectS<NoInfer<{
+        showToolNames: z<boolean, boolean, "defined">;
+        showFolder: z<boolean, boolean, "defined">;
+    }>>>, NoInfer<Schemastery.ObjectT<NoInfer<{
+        showToolNames: z<boolean, boolean, "defined">;
+        showFolder: z<boolean, boolean, "defined">;
+    }>>>, "volatile-defined">;
+    focus: z<NoInfer<Schemastery.ObjectS<NoInfer<{
+        mode: z<"active" | "latest", "active" | "latest", "defined">;
+        includeSubagents: z<boolean, boolean, "defined">;
+    }>>>, NoInfer<Schemastery.ObjectT<NoInfer<{
+        mode: z<"active" | "latest", "active" | "latest", "defined">;
+        includeSubagents: z<boolean, boolean, "defined">;
+    }>>>, "volatile-defined">;
+    connection: z<NoInfer<Schemastery.ObjectS<NoInfer<{
+        transport: z<"auto" | "ipc" | "log", "auto" | "ipc" | "log", "defined">;
+        reconnectMs: z<number, number, "defined">;
+        maxReconnectMs: z<number, number, "defined">;
+        extraPipePaths: z<string[], string[], "defined">;
+    }>>>, NoInfer<Schemastery.ObjectT<NoInfer<{
+        transport: z<"auto" | "ipc" | "log", "auto" | "ipc" | "log", "defined">;
+        reconnectMs: z<number, number, "defined">;
+        maxReconnectMs: z<number, number, "defined">;
+        extraPipePaths: z<string[], string[], "defined">;
+    }>>>, "volatile-defined">;
+    update: z<NoInfer<Schemastery.ObjectS<NoInfer<{
+        debounceMs: z<number, number, "defined">;
+        minIntervalMs: z<number, number, "defined">;
+    }>>>, NoInfer<Schemastery.ObjectT<NoInfer<{
+        debounceMs: z<number, number, "defined">;
+        minIntervalMs: z<number, number, "defined">;
+    }>>>, "volatile-defined">;
+}>>, "plain">;
 /**
  * Register the projection, the transport, and the update triggers.
  * @param ctx - plugin context owning every registration.
@@ -90,3 +212,5 @@ export declare const Config: z<Config>;
 export declare function apply(ctx: Context, config: Config): void;
 /** Re-exported so the locale resource and the plugin row share one key. */
 export { ACTIVITY_KEY };
+/** Re-exported for the plugin page's copy of the defaults. */
+export { DEFAULTS };
