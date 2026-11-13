@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "在线状态推送",
+    "description": "把正在运行的 agent 显示在 Discord 个人资料上：它是在思考、在跑工具、在等你审批，还是在压缩上下文，同时带上模型路由与 token 用量。没有 Discord 应用也能用：把 discord.clientId 设成 Discord 应用 ID（discord.com/developers/applications）并保持 Discord 桌面客户端运行，状态才会真正发出去；在此之前插件会把将要发送的完整载荷写进日志，便于先核对渲染。默认会公开工具名与工作目录名，不想公开就关掉 privacy.showToolNames 与 privacy.showFolder。悬停文字只有在 presence.largeImage 或 presence.smallImage* 指向已上传到应用的资产时才显示。数据由会话日志折叠而来，恢复、分叉与压缩后保持一致。关闭插件会立即清除在线状态。",
+    "detail": "docs/DETAIL.zh.md"
+  }
+}

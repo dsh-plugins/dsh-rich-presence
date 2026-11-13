@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300" viewBox="0 0 640 300" role="img" aria-label="A running session on the left feeds status, model, and token figures into a presence card on the right">
+  <rect x="32" y="54" width="244" height="192" rx="14" fill="#176b5b" fill-opacity="0.08" stroke="#176b5b" stroke-width="3"/>
+  <rect x="58" y="84" width="192" height="16" rx="8" fill="#176b5b" fill-opacity="0.8"/>
+  <rect x="58" y="114" width="150" height="16" rx="8" fill="#176b5b" fill-opacity="0.55"/>
+  <rect x="58" y="144" width="168" height="16" rx="8" fill="#176b5b" fill-opacity="0.35"/>
+  <rect x="58" y="174" width="120" height="16" rx="8" fill="#176b5b" fill-opacity="0.22"/>
+
+  <path d="M196 200h44a10 10 0 0 1 10 10v6" fill="none" stroke="#db6b2c" stroke-width="3" stroke-linecap="round"/>
+
+  <path d="M300 150h52" fill="none" stroke="#db6b2c" stroke-width="4" stroke-linecap="round"/>
+  <path d="M344 142l12 8-12 8" fill="none" stroke="#db6b2c" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <rect x="376" y="54" width="232" height="192" rx="16" fill="#db6b2c" fill-opacity="0.07" stroke="#db6b2c" stroke-width="3"/>
+
+  <rect x="398" y="78" width="72" height="72" rx="16" fill="#176b5b" fill-opacity="0.14" stroke="#176b5b" stroke-width="3"/>
+
+  <circle cx="470" cy="150" r="15" fill="#db6b2c" stroke="#ffffff" stroke-width="4"/>
+
+  <rect x="486" y="82" width="98" height="12" rx="6" fill="#176b5b" fill-opacity="0.75"/>
+  <rect x="486" y="102" width="74" height="12" rx="6" fill="#176b5b" fill-opacity="0.45"/>
+
+  <path d="M398 176h188" fill="none" stroke="#db6b2c" stroke-width="2" stroke-opacity="0.35"/>
+  <rect x="398" y="192" width="120" height="10" rx="5" fill="#db6b2c" fill-opacity="0.5"/>
+  <rect x="398" y="212" width="168" height="10" rx="5" fill="#db6b2c" fill-opacity="0.32"/>
+</svg>
