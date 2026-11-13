@@ -336,11 +336,36 @@ window.__ModuleLoader__.load({
       }));
     }
 
-    /** The configuration form for one bundle page. */
+    /**
+     * Follow one configuration form's snapshot.
+     *
+     * The form is a mutable controller, not a prop that re-renders: the page
+     * re-renders this component only when the slot's own state moves. Subscribing
+     * is what makes a save, a Host rejection, and an external patch edit all
+     * reach the view.
+     */
+    function useFormSnapshot(form) {
+      const [snapshot, setSnapshot] = React.useState(() => form.getSnapshot());
+      React.useEffect(() => {
+        setSnapshot(form.getSnapshot());
+        return form.subscribe(() => setSnapshot(form.getSnapshot()));
+      }, [form]);
+      return snapshot;
+    }
+
+    /**
+     * The configuration form for one bundle page.
+     *
+     * `plugins.bundle.config` is rendered with `{ view }` only — the page does
+     * not supply a form the way it does for an official plugin page — so the
+     * registrant resolves its own entry form and passes it down. A form supplied
+     * by the owner still wins, so the same view can be reused in another slot.
+     */
     function SettingsForm(props) {
       const { t, form } = props;
+      // Hooks run before any early return, so the read is unconditional.
+      const snapshot = useFormSnapshot(form);
       useStyles();
-      const snapshot = form.getSnapshot();
       const [draft, setDraft] = React.useState(null);
       const [busy, setBusy] = React.useState(false);
       const [notice, setNotice] = React.useState(null);
@@ -625,18 +650,31 @@ window.__ModuleLoader__.load({
 
     /** The registered entry: the form on the page view, the one-liner on the summary view. */
     function RichPresenceConfig(props) {
-      return props.view === 'summary' ? summary(props) : h(SettingsForm, props);
+      const form = props.form === undefined ? props.ownForm : props.form;
+      if (form === undefined) {
+        return props.view === 'summary'
+          ? h('span', { className: 'rp-hint' }, props.t('unavailable'))
+          : h('p', { className: 'rp-status', role: 'status' }, props.t('unavailable'));
+      }
+      return props.view === 'summary'
+        ? summary({ t: props.t, form })
+        : h(SettingsForm, { t: props.t, form });
     }
 
     return {
       inject: ['slots', 'locale', 'configForms'],
       apply(ctx) {
         ctx.effect(() => ctx.locale.register('richPresence', TEXT), 'rich-presence: form dictionaries');
+        // The page renders this slot with `{ view }` only, so the entry's form is
+        // resolved here; without it the component would read `undefined` and the
+        // whole slot entry would fail to render. The service memoizes one form per
+        // entry and owns its disposal, so this must not dispose it.
+        const ownForm = ctx.configForms === undefined ? undefined : ctx.configForms.get('rich-presence');
         ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register({
           name: 'plugins.bundle.config',
           key: '@local/rich-presence',
           locale: 'richPresence',
-        }, RichPresenceConfig));
+        }, props => h(RichPresenceConfig, { ...props, ownForm })));
       },
     };
   },

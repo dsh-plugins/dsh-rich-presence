@@ -113,10 +113,12 @@ test('client.js is included in the published file list', () => {
 })
 
 /** Evaluate the artifact the way the module loader does, without a DOM. */
-function evaluateBundle(): {
+function evaluateBundle(options: { configForms?: 'present' | 'absent' } = {}): {
   inject: string[]
   dictionaries: Map<string, Record<string, Record<string, string>>>
   slot: { name: string; key?: string; locale?: string; view: (props: unknown) => unknown }
+  formRequests: string[]
+  subscribed: () => number
 } {
   let registration: {
     id: string
@@ -127,10 +129,20 @@ function evaluateBundle(): {
   } | undefined
   const dictionaries = new Map<string, Record<string, Record<string, string>>>()
   let slot: { name: string; key?: string; locale?: string; view: (props: unknown) => unknown } | undefined
+  const formRequests: string[] = []
+  let listeners = 0
 
+  const snapshot = {
+    status: 'ready',
+    value: { discord: { clientId: '1', activityType: 0, buttons: [] }, connection: { transport: 'auto' } },
+    base: undefined,
+    user: undefined,
+    revision: 1,
+    writable: true,
+  }
   const react = {
     createElement: (type: unknown, props: unknown, ...children: unknown[]) => ({ type, props, children }),
-    useState: (value: unknown) => [value, () => {}],
+    useState: (value: unknown) => [typeof value === 'function' ? (value as () => unknown)() : value, () => {}],
     useEffect: () => {},
     useMemo: (fn: () => unknown) => fn(),
   }
@@ -154,10 +166,46 @@ function evaluateBundle(): {
       inject: (_name: string, register: () => void) => { register() },
       register: (options: never, view: never) => { slot = { ...options, view } },
     },
+    ...options.configForms === 'absent' ? {} : {
+      configForms: {
+        get: (id: string) => {
+          formRequests.push(id)
+          return {
+            getSnapshot: () => snapshot,
+            subscribe: () => { listeners += 1; return () => {} },
+            mutate: async () => true,
+          }
+        },
+      },
+    },
   }
   registration?.exports.apply(ctx)
   if (registration === undefined || slot === undefined) throw new Error('the bundle registered nothing')
-  return { inject: registration.exports.inject, dictionaries, slot }
+  return { inject: registration.exports.inject, dictionaries, slot, formRequests, subscribed: () => listeners }
+}
+
+/**
+ * Expand element wrappers until a host element or a plain value appears.
+ *
+ * The registered entry is a wrapper that binds the resolved form, so one call
+ * only proves the wrapper ran; the bug this guards against lived one level
+ * deeper, in the component that read an absent `form` prop.
+ */
+function render(element: unknown, depth = 6): unknown {
+  let current = element
+  for (let step = 0; step < depth; step += 1) {
+    if (typeof current !== 'object' || current === null) return current
+    const node = current as { type?: unknown; props?: Record<string, unknown> }
+    if (typeof node.type !== 'function') return current
+    current = (node.type as (props: unknown) => unknown)(node.props)
+  }
+  return current
+}
+
+/** Read one rendered element's className, tolerating a non-element result. */
+function classNameOf(element: unknown): string | undefined {
+  const node = element as { props?: { className?: string } } | string | undefined
+  return typeof node === 'object' && node !== null ? node.props?.className : undefined
 }
 
 test('the bundle applies and registers exactly one configuration page', () => {
@@ -182,13 +230,36 @@ test('every locale carries the same keys, so no language falls back mid-form', (
 test('the summary view answers for an absent, a published, and a log-only configuration', () => {
   const { slot } = evaluateBundle()
   const t = (key: string) => key
-  const summary = (value: unknown) => slot.view({
+  const summary = (value: unknown) => render(slot.view({
     view: 'summary',
     t,
     form: { getSnapshot: () => ({ status: 'ready', value }) },
-  })
+  }))
   assert.equal(summary({ discord: { clientId: '' }, connection: { transport: 'auto' } }), 'summaryNoId')
   assert.equal(summary({ discord: { clientId: '1' }, connection: { transport: 'auto' } }), 'summaryConnected')
   assert.equal(summary({ discord: { clientId: '1' }, connection: { transport: 'log' } }), 'summaryLog')
   assert.equal(summary(undefined), 'summaryNoId', 'an unread configuration must not claim to publish')
+})
+
+test('the page view resolves its own form, because this slot supplies none', () => {
+  // The page calls renderSlot('plugins.bundle.config', { view: 'page' }) with no
+  // form, so a view that reads `props.form` renders nothing: React throws on the
+  // first `undefined.getSnapshot()` and the whole slot entry is dropped.
+  const bundle = evaluateBundle()
+  assert.deepEqual(bundle.formRequests, ['rich-presence'], 'the entry id is the form namespace')
+  const rendered = render(bundle.slot.view({ view: 'page', t: (key: string) => key }))
+  assert.equal(classNameOf(rendered), 'rp-form', 'the page view must render without a form prop')
+})
+
+test('a bundle page never crashes when the form service is missing', () => {
+  const bundle = evaluateBundle({ configForms: 'absent' })
+  const rendered = render(bundle.slot.view({ view: 'page', t: (key: string) => key }))
+  assert.equal(classNameOf(rendered), 'rp-status', 'it explains the absence instead of throwing')
+})
+
+test('a form supplied by the owner still wins, so the view is reusable in another slot', () => {
+  const bundle = evaluateBundle()
+  const ownerForm = { getSnapshot: () => ({ status: 'ready', value: { discord: { clientId: '' } } }) }
+  const summary = render(bundle.slot.view({ view: 'summary', t: (key: string) => key, form: ownerForm }))
+  assert.equal(summary, 'summaryNoId', 'the owner form was read, not the resolved one')
 })
