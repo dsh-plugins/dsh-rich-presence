@@ -263,3 +263,54 @@ test('a form supplied by the owner still wins, so the view is reusable in anothe
   const summary = render(bundle.slot.view({ view: 'summary', t: (key: string) => key, form: ownerForm }))
   assert.equal(summary, 'summaryNoId', 'the owner form was read, not the resolved one')
 })
+
+/**
+ * Theme tokens this build defines, read from a running page's computed style.
+ *
+ * A token name that does not exist resolves to nothing, so the declaration is
+ * dropped silently: an input loses its border and a label loses its colour, and
+ * the page looks unstyled instead of reporting anything. That is exactly what an
+ * invented name costs, so the names are pinned here.
+ */
+const KNOWN_TOKENS = new Set([
+  '--dsw-radius-sm', '--dsw-radius-md', '--dsw-radius-lg',
+  '--dsw-focus-ring-width', '--dsw-focus-ring-color',
+  '--dsw-alias-bg-layer-1', '--dsw-alias-bg-layer-2', '--dsw-alias-bg-layer-3', '--dsw-alias-bg-layer-4',
+  '--dsw-alias-bg-base', '--dsw-alias-bg-module-platform', '--dsw-alias-bg-overlay',
+  '--dsw-alias-border-l1', '--dsw-alias-border-l2', '--dsw-alias-border-l3', '--dsw-alias-border-l4',
+  '--dsw-alias-border-selected', '--dsw-alias-border-l2-darkmode-thin',
+  '--dsw-alias-label-primary', '--dsw-alias-label-secondary', '--dsw-alias-label-tertiary',
+  '--dsw-alias-label-primary-foreground', '--dsw-alias-label-primary-inverted', '--dsw-alias-label-on-color',
+  '--dsw-alias-label-error', '--dsw-alias-label-caption', '--dsw-alias-label-dimmed',
+  '--dsw-alias-fill-l1', '--dsw-alias-fill-l2', '--dsw-alias-fill-tsp-secondary',
+  '--dsw-alias-interactive-bg-hover', '--dsw-alias-interactive-bg-active',
+  '--dsw-alias-interactive-bg-hover-danger', '--dsw-alias-interactive-bg-hover-solid',
+  '--dsw-alias-button-primary-fill', '--dsw-alias-button-primary-hover', '--dsw-alias-button-primary-dimmed',
+  '--dsw-alias-button-ghost-active-border', '--dsw-alias-button-ghost-active-fill',
+  '--dsw-alias-state-business-primary', '--dsw-alias-state-error-primary', '--dsw-alias-state-warn-label',
+  '--dsw-alias-brand-primary', '--dsw-alias-brand-text',
+  '--dsw-alias-switch-thumb',
+  '--dsw-alias-card-fill', '--dsw-alias-card-fill-hover',
+])
+
+test('every theme token the form uses exists in this build', () => {
+  const used = [...new Set([...client.matchAll(/var\((--dsw-[a-z0-9-]+)/g)].map(match => match[1]))]
+  assert.ok(used.length > 0, 'the form must style with theme tokens')
+  const unknown = used.filter(token => !KNOWN_TOKENS.has(token))
+  assert.deepEqual(unknown, [], 'an unknown token name silently drops the declaration')
+})
+
+test('the form does not fall back to a boot-only token vocabulary', () => {
+  // `--dsh-boot-*` exists only while the boot screen renders, so a control that
+  // relies on it has no colour once the app is up.
+  assert.doesNotMatch(client, /var\(--dsh-boot-/)
+})
+
+test('each control is styled, so no field renders as a bare browser element', () => {
+  const css = client.slice(client.indexOf('const CSS = ['), client.indexOf("].join('')"))
+  const markup = new Set(
+    [...client.matchAll(/className: '([^']+)'/g)].flatMap(match => match[1].split(' ')).filter(name => name.startsWith('rp-')),
+  )
+  const styled = new Set([...css.matchAll(/\.(rp-[a-z-]+)/g)].map(match => match[1]))
+  assert.deepEqual([...markup].filter(name => !styled.has(name)), [], 'every rendered class has a rule')
+})
