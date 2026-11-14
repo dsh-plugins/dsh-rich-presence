@@ -1,6 +1,6 @@
 {
-  "name": "@local/rich-presence",
-  "version": "0.1.0",
+  "name": "@dsh-plugin/dsh-rich-presence",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Shows the running agent's activity, model, and token usage as Discord Rich Presence, folding the session log so the figures survive replay, resume, and compaction.",

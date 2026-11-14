@@ -11,7 +11,7 @@
  * the page owner's rule, so nothing here writes on unmount.
  */
 window.__ModuleLoader__.load({
-  id: '@local/rich-presence',
+  id: '@dsh-plugin/dsh-rich-presence',
   factory(require) {
     const React = require('react');
     const h = React.createElement;
@@ -264,7 +264,7 @@ window.__ModuleLoader__.load({
     function useStyles() {
       React.useEffect(() => {
         const tag = document.createElement('style');
-        tag.setAttribute('data-plugin', '@local/rich-presence');
+        tag.setAttribute('data-plugin', '@dsh-plugin/dsh-rich-presence');
         tag.textContent = CSS;
         document.head.appendChild(tag);
         return () => { tag.remove(); };
@@ -635,7 +635,7 @@ window.__ModuleLoader__.load({
         ? dirty() ? h('span', { className: 'rp-status' }, t('unsaved')) : null
         : h('span', { className: 'rp-status', 'data-tone': notice.tone, role: 'status' }, notice.text);
 
-      return h('div', { className: 'rp-form', 'data-plugin': '@local/rich-presence' },
+      return h('div', { className: 'rp-form', 'data-plugin': '@dsh-plugin/dsh-rich-presence' },
         h('div', { className: 'rp-head' },
           h('span', { className: 'rp-title' }, t('title')),
           snapshot.writable ? null : h('span', { className: 'rp-badge' }, t('readOnlyBadge'))),
@@ -688,7 +688,7 @@ window.__ModuleLoader__.load({
         const ownForm = ctx.configForms === undefined ? undefined : ctx.configForms.get('rich-presence');
         ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register({
           name: 'plugins.bundle.config',
-          key: '@local/rich-presence',
+          key: '@dsh-plugin/dsh-rich-presence',
           locale: 'richPresence',
         }, props => h(RichPresenceConfig, { ...props, ownForm })));
       },

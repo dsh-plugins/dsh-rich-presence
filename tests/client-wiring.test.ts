@@ -16,6 +16,7 @@ import { dirname, join } from 'node:path'
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const client = readFileSync(join(root, 'client.js'), 'utf8')
 const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as {
+  name: string
   exports: Record<string, unknown>
   files: string[]
   dsh: { client?: { platform?: string; inject?: string[]; immediately?: boolean } }
@@ -32,14 +33,20 @@ test('the registration key is the bundle package name the page looks up', () => 
   assert.equal(manifest.exports['./client'], './client.js')
   const registration = client.slice(client.indexOf("ctx.slots.register({"))
   const key = registration.match(/key: '([^']+)'/)?.[1]
-  assert.equal(key, '@local/rich-presence', 'the slot key must equal the package name')
+  // Pinned to the manifest rather than a second copy of the literal, so a
+  // rename only has to be made in one place and a mismatch fails here.
+  assert.equal(manifest.name, '@dsh-plugin/dsh-rich-presence')
+  assert.equal(key, manifest.name, 'the slot key must equal the package name')
   assert.equal(manifest.exports['.'].default, './lib/index.js')
 })
 
 test('the bundle declares the canonical browser entry for this bundle family', () => {
   assert.equal(manifest.dsh.client?.platform, 'web')
   assert.match(client, /window\.__ModuleLoader__\.load\(\{/)
-  assert.match(client, /id: '@local\/rich-presence'/)
+  assert.ok(
+    client.includes(`id: '${manifest.name}'`),
+    'the module id must equal the package name the page looks up',
+  )
   // A page registered behind `immediately` is prefetched on every boot; the
   // official configuration pages load on demand instead.
   assert.equal(manifest.dsh.client?.immediately, undefined)
@@ -212,7 +219,7 @@ test('the bundle applies and registers exactly one configuration page', () => {
   const bundle = evaluateBundle()
   assert.deepEqual(bundle.inject, ['slots', 'locale', 'configForms'])
   assert.equal(bundle.slot.name, 'plugins.bundle.config')
-  assert.equal(bundle.slot.key, '@local/rich-presence')
+  assert.equal(bundle.slot.key, '@dsh-plugin/dsh-rich-presence')
   assert.equal(bundle.slot.locale, 'richPresence')
 })
 

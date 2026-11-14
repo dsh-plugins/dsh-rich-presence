@@ -1,4 +1,4 @@
-# 在线状态推送（Rich presence）
+# Discord 活动状态（Rich presence）
 
 把 DSH 里正在运行的 agent 显示在 Discord 个人资料上：现在在思考、在跑哪个工具、等你审批、压缩上下文，加上模型路由与 token 用量。
 
@@ -49,14 +49,14 @@ small_text = Running bash
 本插件是 Host-only bundle，不需要客户端代码：
 
 - 在 DSH 里用 **Plugins → Add plugin** 选择本目录，或让 `plugin_manager` 以 `install_bundle` 安装这个绝对路径；
-- 装好后 profile 的 `package.json` 会多一条 `@local/rich-presence` 依赖，`dsh.profile.bundles` 里会列出它；
+- 装好后 profile 的 `package.json` 会多一条 `@dsh-plugin/dsh-rich-presence` 依赖，`dsh.profile.bundles` 里会列出它；
 - 在 **Plugins** 里可以随时开关；关掉会立即清空 Discord 上的活动。
 
 兼容版本：DSH `>=0.2.2-rc.2 <0.3.0`。
 
 ## 在应用里配置（推荐）
 
-打开 **Plugins → Installed plugins → Rich presence**，在描述下方就是配置表单：Discord、显示、隐私、聚焦、连接、限流六组，改完点 **保存**。
+打开 **Plugins → Installed plugins → Discord 活动状态**，在描述下方就是配置表单：Discord、显示、隐私、聚焦、连接、限流六组，改完点 **保存**。
 
 - **保存即时生效，不需要重启**：所有配置组都是 `volatile` 的，loader 会把新值直接提交给运行中的插件。
 - 只重建受影响的部分：改模板只重画卡片，改上游号/传输方式才重连 Discord，改限流才换发布器——不会因为改一行文案就断连接。
@@ -83,7 +83,7 @@ rich-presence (log transport, no discord.clientId): {"type":0,"details":"Thinkin
 1. 打开 <https://discord.com/developers/applications>，点 **New Application**，起个名字（这个名字会显示成 "*Playing* **名字**"）。
 2. 在 **General Information** 里复制 **Application ID**（纯数字，不是 client secret，也不是 token）。
 3. 想让卡片出现图片和悬停文字的话，去 **Rich Presence → Art Assets** 上传图片，把上传时填的图片名填进表单里「大图资产名」/「运行中的小图」/「空闲时的小图」。**名字必须和已上传资产完全一致**，否则 Discord 会把图丢掉而插件这边不会有报错。
-4. 回到 **Plugins → Rich presence**，把 **应用 ID** 填进去，**保存**。
+4. 回到 **Plugins → Discord 活动状态**，把 **应用 ID** 填进去，**保存**。
 
 保存后会立刻连上 Discord（不用重启），日志出现 `connected to the discord client`，资料页上出现活动卡片。
 
@@ -91,7 +91,7 @@ rich-presence (log transport, no discord.clientId): {"type":0,"details":"Thinkin
 
 ```yaml
 - id: rich-presence
-  name: '@local/rich-presence'
+  name: '@dsh-plugin/dsh-rich-presence'
   config:
     discord:
       clientId: '123456789012345678'
@@ -146,7 +146,7 @@ rich-presence (log transport, no discord.clientId): {"type":0,"details":"Thinkin
 
 ```yaml
 - id: rich-presence
-  name: '@local/rich-presence'
+  name: '@dsh-plugin/dsh-rich-presence'
   config:
     discord:
       clientId: '123456789012345678'
