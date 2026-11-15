@@ -14,7 +14,7 @@
 import z from '@deepseek-ai/schemastery';
 import type { Context, Volatile } from '@deepseek-ai/cordis';
 import { ACTIVITY_KEY } from './activity.ts';
-import { DEFAULTS, type ConnectionSettings, type DiscordSettings, type FocusSettings, type PresenceSettings, type PrivacySettings, type UpdateSettings } from './settings.ts';
+import { DEFAULT_CLIENT_ID, DEFAULTS, type ConnectionSettings, type DiscordSettings, type FocusSettings, type PresenceSettings, type PrivacySettings, type UpdateSettings } from './settings.ts';
 /** Cordis plugin name. */
 export declare const name = "rich-presence";
 /**
@@ -242,3 +242,5 @@ export declare function apply(ctx: Context, config: Config): void;
 export { ACTIVITY_KEY };
 /** Re-exported for the plugin page's copy of the defaults. */
 export { DEFAULTS };
+/** Re-exported so the shipped application id has one declaration. */
+export { DEFAULT_CLIENT_ID };

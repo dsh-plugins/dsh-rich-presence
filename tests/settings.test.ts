@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import type { Volatile } from '@deepseek-ai/cordis'
 import type { Config } from '../src/settings.ts'
 import {
+  DEFAULT_CLIENT_ID,
   DEFAULTS,
   formatButtons,
   formatEndpoints,
@@ -12,6 +13,7 @@ import {
   parseEndpoints,
   parseLabels,
   parseModelImages,
+  publishesToDiscord,
   readSettings,
   reconcileKeys,
   renderConfigOf,
@@ -280,4 +282,30 @@ test('editing the model-image rules redraws the card without touching the connec
   assert.notEqual(after.render, before.render, 'the card must be re-rendered')
   assert.equal(after.transport, before.transport, 'the Discord connection survives the edit')
   assert.equal(after.update, before.update)
+})
+
+test('a fresh install publishes through the shared application, with no setup', () => {
+  // The bundle is meant to work the moment it is installed, so the shipped id
+  // is the one whose uploaded artwork the model rules name.
+  assert.equal(DEFAULT_CLIENT_ID, '1570848316290498590')
+  assert.equal(DEFAULTS.discord.clientId, DEFAULT_CLIENT_ID)
+  assert.equal(
+    publishesToDiscord(DEFAULTS),
+    true,
+    'transport "auto" plus a shipped id must reach Discord rather than the log',
+  )
+})
+
+test('publishing is opt-out: an empty id or a forced log transport stays local', () => {
+  const empty = { ...DEFAULTS, discord: { ...DEFAULTS.discord, clientId: '' } }
+  assert.equal(publishesToDiscord(empty), false)
+
+  const forcedLog = { ...DEFAULTS, connection: { ...DEFAULTS.connection, transport: 'log' as const } }
+  assert.equal(publishesToDiscord(forcedLog), false, 'a deliberately local transport ignores the id')
+
+  const forcedIpc = { ...empty, connection: { ...DEFAULTS.connection, transport: 'ipc' as const } }
+  assert.equal(publishesToDiscord(forcedIpc), true, 'asking for ipc without an id is a fallback, not a choice')
+
+  const padded = { ...DEFAULTS, discord: { ...DEFAULTS.discord, clientId: '   ' } }
+  assert.equal(publishesToDiscord(padded), false, 'whitespace is not an id')
 })

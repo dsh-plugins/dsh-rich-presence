@@ -81,7 +81,7 @@ kimi: kimi, k3
 
 ## 安装
 
-本插件是 Host-only bundle，不需要客户端代码：
+本插件是 bundle，Host 端负责采集与推送，浏览器端只提供下面那个配置页：
 
 - 在 DSH 里用 **Plugins → Add plugin** 选择本目录，或让 `plugin_manager` 以 `install_bundle` 安装这个绝对路径；
 - 装好后 profile 的 `package.json` 会多一条 `@dsh-plugin/dsh-rich-presence` 依赖，`dsh.profile.bundles` 里会列出它；
@@ -89,38 +89,34 @@ kimi: kimi, k3
 
 兼容版本：DSH `>=0.2.2-rc.2 <0.3.0`。
 
-## 在应用里配置（推荐）
+## 开箱即用
 
-打开 **Plugins → Installed plugins → Discord 活动状态**，在描述下方就是配置表单：Discord、显示、隐私、聚焦、连接、限流六组，改完点 **保存**。
+**装完就能用，不需要任何配置。** 插件默认走 DSH 官方应用 `1570848316290498590` 推送：那上面已经传好了各族模型的大图和小图 `deepseek_harness`，所以你装上、开着 Discord 桌面客户端，资料页上就会直接出现带图的卡片。
 
-- **保存即时生效，不需要重启**：所有配置组都是 `volatile` 的，loader 会把新值直接提交给运行中的插件。
-- 只重建受影响的部分：改模板只重画卡片，改上游号/传输方式才重连 Discord，改限流才换发布器——不会因为改一行文案就断连接。
-- 字段清空后回到继承值（profile patch 里写的值或内置默认）。
-- profile 不接受写入、或该项被更高优先级的层（home patch / 命令行）覆盖时，表单只读并说明原因，**不会假装保存成功**。
-- 这个 profile 没有挂载 `ui-settings` 时不会出现配置区，此时只能改 `cordis.patch.yml`（下面还有一段手写配置的说明）。
+> 必须是 **Discord 桌面客户端**：网页版不提供本地 IPC 套接字，插件连不上。
 
-## 先跑起来（不需要 Discord 应用）
+- 默认 `discord.clientId` 就是上面这个应用，`connection.transport` 是 `auto`，所以装完即连。
+- 应用 ID 是公开信息（任何 OAuth 邀请链接里都能看到），不是密钥，也不带任何权限。
+- 卡片会显示成 **Playing + 该应用的名字**。想换成自己的名字（或者干脆用自己的应用）就下一节。
 
-默认 `discord.clientId` 为空，插件**不会连接 Discord**，而是把将要发送的完整 JSON 载荷写进日志：
+想确认渲染对不对、或者暂时不推送到 Discord，把 **应用 ID 清空并保存**，插件就改为把将要发送的完整 JSON 载荷写进日志：
 
 ```
 rich-presence (log transport, no discord.clientId): {"type":0,"details":"Thinking · dsh","state":"deepseek-v4.1-flash · 42.1K · in 184K (183K cached) · out 212"}
 ```
 
-第一条载荷用 `info` 级别，之后每次变化降到 `debug`，所以长会话不会刷屏。日志跟着 DSH 进程走：`dsh web` 时就在启动它的终端里。
+第一条载荷用 `info` 级别，之后每次变化降到 `debug`，所以长会话不会刷屏。日志跟着 DSH 进程走：`dsh web` 时就在启动它的终端里。改回来（填回 ID）保存，会立刻重新连上，不用重启。
 
-先看日志确认渲染符合预期，再去创建应用。
+## 换成自己的应用（可选）
 
-## 创建 Discord 应用并接通
-
-> 必须是 **Discord 桌面客户端**：网页版不提供本地 IPC 套接字，插件连不上。
+想用自己的应用名、自己的图标，或者自己控制资产时：
 
 1. 打开 <https://discord.com/developers/applications>，点 **New Application**，起个名字（这个名字会显示成 "*Playing* **名字**"）。
 2. 在 **General Information** 里复制 **Application ID**（纯数字，不是 client secret，也不是 token）。
-3. 想让卡片出现图片和悬停文字的话，去 **Rich Presence → Art Assets** 上传图片：各族模型的大图命名成 `claude` / `deepseek` / `gemini` / `glm` / `gpt` / `grok` / `kimi` / `qwen`，小图命名成 `deepseek_harness`，默认配置就位；用别的名字就到表单里改「按模型切换大图」/「运行中的小图」/「空闲时的小图」。**名字必须和已上传资产完全一致**，否则 Discord 会把图丢掉而插件这边不会有报错。
-4. 回到 **Plugins → Discord 活动状态**，把 **应用 ID** 填进去，**保存**。
+3. 想让图片和悬停文字保留的话，去 **Rich Presence → Art Assets** 上传同名资产：各族模型的大图命名成 `claude` / `deepseek` / `gemini` / `glm` / `gpt` / `grok` / `kimi` / `qwen`，小图命名成 `deepseek_harness`。**名字必须和已上传资产完全一致**，否则 Discord 会把图丢掉而插件这边不会有报错。不想上传也可以，把表单里「按模型切换大图」清空，卡片就只用应用图标。
+4. 回到 **Plugins → Discord 活动状态**，把 **应用 ID** 换成你自己的，**保存**。
 
-保存后会立刻连上 Discord（不用重启），日志出现 `connected to the discord client`，资料页上出现活动卡片。
+保存后会立刻重连（不用重启），日志出现 `connected to the discord client`，资料页上出现活动卡片。
 
 如果不用表单，也可以手写 `cordis.patch.yml`（两种方式等价，表单保存的就是同一份配置）：
 
@@ -129,6 +125,7 @@ rich-presence (log transport, no discord.clientId): {"type":0,"details":"Thinkin
   name: '@dsh-plugin/dsh-rich-presence'
   config:
     discord:
+      # 19 位数字超出安全整数范围，必须加引号，否则 YAML 会把它解析成数字而丢失末尾几位。
       clientId: '123456789012345678'
 ```
 
@@ -136,13 +133,23 @@ rich-presence (log transport, no discord.clientId): {"type":0,"details":"Thinkin
 
 **Discord 没开或没登录**时连不上，插件每个重连周期只警告一次（`cannot reach a running Discord desktop client`），然后按退避继续尝试；Discord 打开后会自动接上。
 
+## 在应用里配置（推荐）
+
+打开 **Plugins → Installed plugins → Discord 活动状态**，在描述下方就是配置表单：Discord、显示、隐私、聚焦、连接、限流六组，改完点 **保存**。
+
+- **保存即时生效，不需要重启**：所有配置组都是 `volatile` 的，loader 会把新值直接提交给运行中的插件。
+- 只重建受影响的部分：改模板只重画卡片，改上游号/传输方式才重连 Discord，改限流才换发布器——不会因为改一行文案就断连接。
+- 每一项都能恢复为继承值（profile patch 里写的值或内置默认）；注意把某一项**擦空**是写入空值，不是恢复默认——应用 ID 擦空就是明确关掉推送。
+- profile 不接受写入、或该项被更高优先级的层（home patch / 命令行）覆盖时，表单只读并说明原因，**不会假装保存成功**。
+- 这个 profile 没有挂载 `ui-settings` 时不会出现配置区，此时只能改 `cordis.patch.yml`（下面还有一段手写配置的说明）。
+
 ## 配置参考
 
-表单里的每一项与下面的字段一一对应；也可以直接写 `cordis.patch.yml`。所有字段都有默认值，整行可以只写 `discord.clientId`。
+表单里的每一项与下面的字段一一对应；也可以直接写 `cordis.patch.yml`。所有字段都有默认值，一行 `config` 都不用写。
 
 | 字段 | 默认 | 说明 |
 |---|---|---|
-| `discord.clientId` | `''` | Discord Application ID；空则走日志传输 |
+| `discord.clientId` | `1570848316290498590` | Discord Application ID；默认是 DSH 官方应用（资产齐全，装完即用）。换成自己的应用即改这一项；清空则走日志传输 |
 | `discord.activityType` | `0` | 0 在玩 / 2 在听 / 3 在看 / 5 在比赛 |
 | `discord.buttons` | `[]` | 最多两个 `{label, url}`，用于挂链接 |
 | `presence.details` | `{activity} · {folder}` | 第一行模板 |
@@ -212,11 +219,12 @@ rich-presence (log transport, no discord.clientId): {"type":0,"details":"Thinkin
 - 默认会把**正在运行的工具名**和**工作目录的目录名**发到 Discord，也就是会公开显示在你的个人资料上。不想公开就关掉 `privacy.showToolNames` / `privacy.showFolder`。
 - Discord 对活动更新限流（大约 20 秒 5 次）。插件默认 400ms 去抖 + 15 秒最小间隔，且内容没变化就不发；一个长会话常见是每 15 秒最多一次。
 - 只连接本机的 `discord-ipc-*` 命名管道 / Unix socket，不经过网络，也不需要 Discord token。
+- 默认推送用的是 DSH 官方应用，所以别人看到的活动是「**在玩 + 那个应用的名字**」，不会显示你的应用名；想换成自己的名字就按上一节换应用。
 
 ## 已知边界
 
 - 已实测（本机 Discord 桌面客户端，app id `1570848316290498590`）：握手 READY，`SET_ACTIVITY` 被接受并原样回显 details / state / timestamps / assets 四个字段，活动名取自应用名。未验证的只剩**肉眼观感**（卡片在你的资料页上长什么样），因为这里没有截图能力。
-- **配置表单的页面渲染未验证**：没有浏览器控制权。已验证的是接线与数据契约——注册进官方 `plugins.bundle.config`、槽键等于包名、六个配置组都能被 `dsh-settings` 的 `volatileForm` 投影出来（也就是 namespace 会发布、能保存）、写完由 `settings/document-updated` 触发重建。
+- 配置表单验证到的程度：接线与数据契约（注册进官方 `plugins.bundle.config`、槽键等于包名、六个配置组都能被 `dsh-settings` 的 `volatileForm` 投影出来、写完由 `settings/document-updated` 触发重建），以及用同款主题变量离线渲染核对过的布局与控件样式。**在真实页面里的最终观感仍未截图验证**，因为没有浏览器控制权。
 - 配置项声明为 `volatile`，所以保存不重启插件；代价是 Host 必须自己响应变更——这也是为什么 `index.ts` 会按 `transport` / `update` / `render` 三层分别重建。
 - 这个 profile 没有挂载 `ui-settings` 时不会出现配置区，`cordis.patch.yml` 仍是唯一入口，插件其余功能不受影响。
 - `minIntervalMs` 较大时会话结束后的最后一次更新可能晚一点发出（最多一个间隔），这是限流的必然代价。

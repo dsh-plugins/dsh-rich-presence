@@ -86,8 +86,18 @@ function saved(listeners: { event: string; handler: (...args: unknown[]) => void
 /** Wait past one debounce window. */
 const settle = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 120))
 
-/** A configuration whose rate limits allow several publishes inside one test. */
-const fastConfig = (): Config => new Config({ update: { debounceMs: 10, minIntervalMs: 0 } }) as Config
+/**
+ * A configuration whose rate limits allow several publishes inside one test.
+ *
+ * The shipped defaults publish through the shared application id, so the id is
+ * cleared here: these tests drive a local pipeline and must never open a socket
+ * to whatever Discord client runs beside the suite. One test sets an id itself
+ * to exercise the switch to the real transport.
+ */
+const fastConfig = (): Config => new Config({
+  discord: { clientId: '' },
+  update: { debounceMs: 10, minIntervalMs: 0 },
+}) as Config
 
 test('a live template save redraws the card without touching the connection', async () => {
   const { ctx, logs, listeners } = harness()

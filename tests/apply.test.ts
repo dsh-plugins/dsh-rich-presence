@@ -2,7 +2,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { Context } from '@deepseek-ai/cordis'
-import { Config, apply } from '../src/index.ts'
+import { Config, DEFAULT_CLIENT_ID, DEFAULTS, apply } from '../src/index.ts'
+import { readSettings } from '../src/settings.ts'
 
 /**
  * A stub Harness context with just the surfaces `apply` touches.
@@ -101,12 +102,28 @@ const busyEvents = [
   { type: 'tool/call', seq: 4, time: 1_790_000_000_300, data: { turn: 1, step: 2, callId: 'c1', name: 'Bash' } },
 ]
 
+/**
+ * A configuration that renders to the log instead of reaching Discord.
+ *
+ * A fresh install publishes immediately through the shared application id, so
+ * a test that inspects payloads would otherwise open a socket to whatever
+ * Discord client happens to be running beside the suite. Clearing the id keeps
+ * the transport local while every other default stays exactly as shipped.
+ *
+ * @param overrides - groups to store on top of the defaults.
+ * @returns the configuration to hand to {@link apply}.
+ */
+function offline(overrides: Record<string, unknown> = {}): Config {
+  const discord = { ...(overrides.discord as Record<string, unknown> | undefined), clientId: '' }
+  return new Config({ ...overrides, discord }) as Config
+}
+
 test('the default configuration renders a busy session with every visible field', async () => {
   const { ctx, logs } = harness({
     events: busyEvents,
     tokens: { usage: { uncachedInputTokens: 82_300, outputTokens: 12_100, cacheReadTokens: 3_400, cacheWriteTokens: 0 }, contextTokens: 42_100 },
   })
-  apply(ctx, new Config({}) as Config)
+  apply(ctx, offline())
   await new Promise(resolve => setTimeout(resolve, 700))
 
   const payloads = payloadsFrom(logs)
@@ -129,7 +146,7 @@ test('switching the running model switches the large image', async () => {
   // The rate limits are relaxed so the second payload is not swallowed by the
   // 15-second spacing the production defaults impose.
   const { ctx, logs, switchModel } = harness({ events: busyEvents })
-  apply(ctx, new Config({ update: { debounceMs: 10, minIntervalMs: 0 } }) as Config)
+  apply(ctx, offline({ update: { debounceMs: 10, minIntervalMs: 0 } }))
   await new Promise(resolve => setTimeout(resolve, 60))
   assert.equal((payloadsFrom(logs)[0] as { assets?: { large_image?: string } }).assets?.large_image, 'deepseek')
 
@@ -146,7 +163,7 @@ test('switching the running model switches the large image', async () => {
 
 test('without token-meter the related segments disappear instead of showing placeholders', async () => {
   const { ctx, logs } = harness({ events: busyEvents })
-  apply(ctx, new Config({}) as Config)
+  apply(ctx, offline())
   await new Promise(resolve => setTimeout(resolve, 700))
 
   const payloads = payloadsFrom(logs)
@@ -158,7 +175,7 @@ test('without token-meter the related segments disappear instead of showing plac
 
 test('with no live agent the card says Idle, and the log transport explains why it is used', async () => {
   const { ctx, logs } = harness({ agent: false })
-  apply(ctx, new Config({}) as Config)
+  apply(ctx, offline())
   await new Promise(resolve => setTimeout(resolve, 700))
 
   const payloads = payloadsFrom(logs)
@@ -171,7 +188,7 @@ test('with no live agent the card says Idle, and the log transport explains why 
 
 test('showWhenIdle: false clears the presence when no agent is live', async () => {
   const { ctx, logs } = harness({ agent: false })
-  apply(ctx, new Config({ presence: { showWhenIdle: false } }) as Config)
+  apply(ctx, offline({ presence: { showWhenIdle: false } }))
   await new Promise(resolve => setTimeout(resolve, 700))
 
   const payloads = payloadsFrom(logs)
@@ -180,7 +197,7 @@ test('showWhenIdle: false clears the presence when no agent is live', async () =
 
 test('privacy switches remove the tool name and the folder from the payload', async () => {
   const { ctx, logs } = harness({ events: busyEvents })
-  apply(ctx, new Config({ privacy: { showToolNames: false, showFolder: false } }) as Config)
+  apply(ctx, offline({ privacy: { showToolNames: false, showFolder: false } }))
   await new Promise(resolve => setTimeout(resolve, 700))
 
   const payload = payloadsFrom(logs)[0] as { details: string; state?: string }
@@ -190,7 +207,7 @@ test('privacy switches remove the tool name and the folder from the payload', as
 
 test('buttons are capped at two and must be absolute links', async () => {
   const { ctx, logs } = harness({ events: busyEvents })
-  apply(ctx, new Config({
+  apply(ctx, offline({
     discord: {
       buttons: [
         { label: 'Repo', url: 'https://example.com/repo' },
@@ -199,7 +216,7 @@ test('buttons are capped at two and must be absolute links', async () => {
         { label: 'Local', url: 'file:///tmp/x' },
       ],
     },
-  }) as Config)
+  }))
   await new Promise(resolve => setTimeout(resolve, 700))
 
   const payload = payloadsFrom(logs)[0] as { buttons?: { label: string }[] }
@@ -214,10 +231,49 @@ test('a forced log transport with a client id names its real reason', async () =
   }) as Config)
   await new Promise(resolve => setTimeout(resolve, 700))
 
+  // The reason is the first argument of the formatted line, not part of the
+  // message, so reading `message` alone would assert nothing.
   const first = logs.find(entry => entry.message.includes('log transport'))
   assert.ok(first !== undefined)
+  const reason = String(first.args[0])
   assert.ok(
-    !first.message.includes('no discord.clientId'),
-    'a deliberately forced log transport must not claim the id is missing',
+    reason.includes('connection.transport is "log"'),
+    'a deliberately forced log transport must name the choice, not a missing id',
+  )
+  assert.ok(
+    !reason.includes('no discord.clientId'),
+    'the id is present, so blaming it would send the reader hunting for a bug',
+  )
+})
+
+test('the schema default and the runtime default agree, so the page shows what the Host uses', () => {
+  // Two places hold the shipped id: the schema (what the configuration page
+  // reads back) and DEFAULTS (what the pipeline falls back to). If they drift,
+  // a fresh install publishes through one application while the page displays
+  // an empty field, and the first save silently switches the card.
+  const stored = new Config({}).discord.get()
+  assert.equal(stored.clientId, DEFAULTS.discord.clientId)
+  assert.equal(stored.clientId, DEFAULT_CLIENT_ID)
+  assert.equal(readSettings(new Config({})).discord.clientId, DEFAULT_CLIENT_ID)
+})
+
+test('clearing the application id is the documented way to switch publishing off', async () => {
+  const { ctx, logs } = harness({ events: busyEvents })
+  apply(ctx, offline())
+  await new Promise(resolve => setTimeout(resolve, 700))
+  assert.ok(payloadsFrom(logs).length > 0, 'the payload still renders, it just goes to the log')
+  assert.ok(
+    logs.some(entry => entry.level === 'info' && entry.message.includes('no discord.clientId configured')),
+    'the operator is told why nothing reaches Discord',
+  )
+})
+
+test('forcing the Discord transport without an id explains the fallback', async () => {
+  const { ctx, logs } = harness({ events: busyEvents })
+  apply(ctx, offline({ connection: { transport: 'ipc' } }))
+  await new Promise(resolve => setTimeout(resolve, 700))
+  assert.ok(
+    logs.some(entry => entry.level === 'warn' && entry.message.includes('discord.clientId is empty')),
+    'an explicitly requested transport that cannot run must say so',
   )
 })

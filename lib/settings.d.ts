@@ -95,8 +95,31 @@ export declare const MAX_TRUNCATE_AT = 128;
 export declare const MIN_RECONNECT_MS = 100;
 /** Smallest maximum reconnect delay the page accepts, in milliseconds. */
 export declare const MIN_MAX_RECONNECT_MS = 1000;
+/**
+ * The Discord application a fresh install publishes through.
+ *
+ * Installing the bundle is meant to be the whole setup, so the plugin ships the
+ * DSH application's own id: its Art Assets hold the artwork the model rules
+ * name, and every user therefore sees a picture without uploading anything.
+ *
+ * An application id is public — it appears in any OAuth invite — and carries no
+ * permission, so shipping it here is not a secret. A user who wants the card
+ * under their own application name replaces it on the plugin page; clearing the
+ * field turns publishing off and writes the payloads to the log instead.
+ */
+export declare const DEFAULT_CLIENT_ID = "1570848316290498590";
 /** Built-in defaults for every group; the schema's defaults mirror these. */
 export declare const DEFAULTS: SettingsSnapshot;
+/**
+ * Whether a snapshot asks for the Discord transport at all.
+ *
+ * Kept pure and separate from building the client, so the out-of-box decision
+ * can be asserted without opening a socket.
+ *
+ * @param settings - one configuration snapshot.
+ * @returns true when the card should be published to Discord.
+ */
+export declare function publishesToDiscord(settings: SettingsSnapshot): boolean;
 /**
  * Capture the live configuration as one plain snapshot.
  * @param config - the plugin's configuration references.
