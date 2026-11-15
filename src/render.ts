@@ -60,6 +60,67 @@ export interface PresenceSnapshot {
   turnStart?: number
 }
 
+/**
+ * One rule mapping model-id keywords to an uploaded image asset.
+ *
+ * The asset names the large image; every pattern is a prefix of one word of the
+ * lower-cased model id. Rules are tried in order, so the first match wins.
+ */
+export interface ModelImageRule {
+  /** Asset name uploaded to the Discord application. */
+  asset: string
+  /** Word prefixes that select this asset, such as `deepseek` or `k3`. */
+  patterns: string[]
+}
+
+/** Default model-image rules, one per model family the plugin recognises. */
+export const DEFAULT_MODEL_IMAGES: ModelImageRule[] = [
+  // Anthropic ids carry `claude-`, and gateways often keep only the tier word.
+  { asset: 'claude', patterns: ['claude', 'anthropic', 'sonnet', 'opus', 'haiku', 'fable'] },
+  { asset: 'deepseek', patterns: ['deepseek'] },
+  { asset: 'gemini', patterns: ['gemini'] },
+  // Z.ai still ships `glm-4.6v`; chatglm and zhipu are the older spellings.
+  { asset: 'glm', patterns: ['glm', 'chatglm', 'zhipu'] },
+  // `o1`/`o3`/`o4` are OpenAI's own short names and never appear alone in another vendor's id.
+  { asset: 'gpt', patterns: ['gpt', 'openai', 'chatgpt', 'o1', 'o3', 'o4'] },
+  { asset: 'grok', patterns: ['grok'] },
+  // Kimi's gateway aliases in the wild are `k3`, `k3-256k`, and `kimi-for-coding`.
+  { asset: 'kimi', patterns: ['kimi', 'moonshot', 'k2', 'k3'] },
+  { asset: 'qwen', patterns: ['qwen', 'qwq', 'qianwen'] },
+]
+
+/** Splits a model id into the words a pattern is matched against. */
+const MODEL_WORD_SEPARATOR = /[^a-z0-9]+/
+
+/**
+ * Choose the large image for one model id.
+ *
+ * Matching is per word rather than per substring: a pattern must be a prefix of
+ * a whole word of the model id. Substring matching would let `o1` claim
+ * `sao10k/l3.1-euryale-70b` and `o4` claim `upstage/solar-pro4`, which silently
+ * shows one vendor's logo for another vendor's model.
+ *
+ * @param model - model id of the selected route.
+ * @param rules - configured rules, in priority order.
+ * @returns the matching asset name, or `undefined` when nothing matches.
+ */
+export function modelImageOf(model: string | undefined, rules: readonly ModelImageRule[] | undefined): string | undefined {
+  if (model === undefined || rules === undefined) return undefined
+  const words = model.toLowerCase().trim().split(MODEL_WORD_SEPARATOR).filter(word => word.length > 0)
+  if (words.length === 0) return undefined
+  for (const rule of rules) {
+    if (rule.asset.trim().length === 0) continue
+    for (const pattern of rule.patterns) {
+      // A hand-written pattern may carry punctuation the section allows nowhere
+      // else; skipping it keeps the remaining rules working.
+      const needle = pattern.toLowerCase().trim()
+      if (!/^[a-z0-9]+$/.test(needle)) continue
+      if (words.some(word => word.startsWith(needle))) return rule.asset.trim()
+    }
+  }
+  return undefined
+}
+
 /** The activity object Discord accepts for `SET_ACTIVITY`. */
 export interface ActivityPayload {
   type?: number
@@ -82,6 +143,8 @@ export interface RenderConfig {
   smallText: string
   /** Asset name of the large image, uploaded to the Discord application; empty omits it. */
   largeImage: string
+  /** Rules that override `largeImage` with an asset matching the running model. */
+  modelImages?: readonly ModelImageRule[]
   /** Asset name of the small image while the agent works; empty omits it. */
   smallImageRunning: string
   /** Asset name of the small image while the agent is idle; empty omits it. */
@@ -390,13 +453,17 @@ export function renderActivity(
   const largeText = fitField(expandTemplate(config.largeText, values).join(SEGMENT_SEPARATOR), limit)
   const smallText = fitField(expandTemplate(config.smallText, values).join(SEGMENT_SEPARATOR), limit)
   const smallImage = workingPhase(snapshot.phase) ? config.smallImageRunning : config.smallImageIdle
+  // The model decides the large image first, so switching models switches the
+  // picture; an unrecognised model falls back to the fixed asset, and with no
+  // asset at all the slot keeps the application icon.
+  const largeImage = modelImageOf(snapshot.model, config.modelImages) ?? config.largeImage
   // Hover text is emitted even without a configured asset name: the large image
   // slot falls back to the application's own icon, which gives the text a
   // target. A configured name that does not match an uploaded asset is dropped
   // by Discord while the text survives, so sending the text is never the
   // reason a card looks wrong.
   const assets: NonNullable<ActivityPayload['assets']> = {
-    ...config.largeImage.length === 0 ? {} : { large_image: config.largeImage },
+    ...largeImage.length === 0 ? {} : { large_image: largeImage },
     ...largeText === undefined ? {} : { large_text: largeText },
     ...smallImage.length === 0 ? {} : { small_image: smallImage },
     ...smallText === undefined ? {} : { small_text: smallText },

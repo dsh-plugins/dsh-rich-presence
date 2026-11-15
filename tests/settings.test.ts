@@ -7,13 +7,16 @@ import {
   formatButtons,
   formatEndpoints,
   formatLabels,
+  formatModelImages,
   parseButtons,
   parseEndpoints,
   parseLabels,
+  parseModelImages,
   readSettings,
   reconcileKeys,
   renderConfigOf,
 } from '../src/settings.ts'
+import { DEFAULT_MODEL_IMAGES, modelImageOf } from '../src/render.ts'
 
 /** Build a volatile reference over a value, as the loader would supply. */
 function ref<T extends object>(value: Partial<T>): Volatile<T> {
@@ -181,4 +184,100 @@ test('empty input formats to an empty string', () => {
 
 test('label formatting is sorted so an unchanged set never looks edited', () => {
   assert.equal(formatLabels({ b: '2', a: '1' }), 'a: 1\nb: 2')
+})
+
+test('the shipped model-image rules cover the published families in priority order', () => {
+  const rules = DEFAULTS.presence.modelImages
+  assert.deepEqual(rules.map(rule => rule.asset), ['claude', 'deepseek', 'gemini', 'glm', 'gpt', 'grok', 'kimi', 'qwen'])
+  for (const rule of rules) {
+    assert.ok(rule.patterns.length > 0, `${rule.asset} must match at least one keyword`)
+  }
+  // The defaults must not share array instances with the constant, or a save
+  // that mutates one would leak into every other snapshot.
+  assert.notEqual(DEFAULTS.presence.modelImages, DEFAULT_MODEL_IMAGES)
+  assert.notEqual(DEFAULTS.presence.modelImages[0]?.patterns, DEFAULT_MODEL_IMAGES[0]?.patterns)
+})
+
+test('the default rules map real model ids to their family', () => {
+  const cases: [string, string | undefined][] = [
+    ['deepseek-v4.1-flash', 'deepseek'],
+    ['deepseek-v4-pro', 'deepseek'],
+    ['claude-sonnet-5.5', 'claude'],
+    ['claude-haiku-4.5', 'claude'],
+    ['gemini-3.8-flash', 'gemini'],
+    ['glm-5.3', 'glm'],
+    ['glm-4.6v', 'glm'],
+    ['gpt-6.1-sol', 'gpt'],
+    ['gpt-image-2.5', 'gpt'],
+    ['openai/o4-mini', 'gpt'],
+    ['grok-4.20', 'grok'],
+    ['kimi-k3.1-pro', 'kimi'],
+    ['kimi-k2-thinking', 'kimi'],
+    ['k3', 'kimi'],
+    ['k3-256k', 'kimi'],
+    ['kimi-for-coding', 'kimi'],
+    ['qwen3.8-max', 'qwen'],
+    ['qwen-plus', 'qwen'],
+    ['my-private-model', undefined],
+    ['sao10k/l3.1-euryale-70b', undefined],
+  ]
+  for (const [model, expected] of cases) {
+    assert.equal(modelImageOf(model, DEFAULTS.presence.modelImages), expected, model)
+  }
+})
+
+test('the small image defaults to the DSH badge', () => {
+  assert.equal(DEFAULTS.presence.smallImageRunning, 'deepseek_harness')
+  assert.equal(DEFAULTS.presence.smallImageIdle, 'deepseek_harness')
+})
+
+test('model-image rules parse one per line and keep their order', () => {
+  const parsed = parseModelImages('claude: claude, anthropic\nkimi: kimi, k3\n  \ngpt: gpt, o3')
+  assert.deepEqual(parsed.entries, [
+    { asset: 'claude', patterns: ['claude', 'anthropic'] },
+    { asset: 'kimi', patterns: ['kimi', 'k3'] },
+    { asset: 'gpt', patterns: ['gpt', 'o3'] },
+  ])
+  assert.deepEqual(parsed.errors, [])
+})
+
+test('malformed model-image lines are reported, never silently dropped', () => {
+  const parsed = parseModelImages([
+    'no separator here',
+    'bad asset: x',
+    'bad_asset!: x',
+    'empty: ',
+    ', x: y',
+    'punct: o3-mini',
+    'Good: ok, fine',
+  ].join('\n'))
+  assert.deepEqual(parsed.entries, [{ asset: 'Good', patterns: ['ok', 'fine'] }])
+  assert.equal(parsed.errors.length, 6)
+  assert.match(parsed.errors[0] ?? '', /Expected "asset: keyword/)
+  assert.match(parsed.errors[1] ?? '', /letters, digits, and underscores/)
+  assert.match(parsed.errors[3] ?? '', /Missing model keyword/)
+  assert.match(parsed.errors[4] ?? '', /letters, digits, and underscores/)
+  assert.match(parsed.errors[5] ?? '', /Model keywords use letters and digits/)
+})
+
+test('the model-image formatter round-trips and keeps the priority order', () => {
+  const rules = DEFAULTS.presence.modelImages
+  assert.deepEqual(parseModelImages(formatModelImages(rules)).entries, rules)
+  assert.equal(formatModelImages([]), '')
+  // Order is preserved rather than sorted, because the first match wins.
+  assert.equal(
+    formatModelImages([{ asset: 'z', patterns: ['b'] }, { asset: 'a', patterns: ['a'] }]),
+    'z: b\na: a',
+  )
+})
+
+test('editing the model-image rules redraws the card without touching the connection', () => {
+  const before = reconcileKeys(readSettings(config({ discord: { clientId: '1' } })))
+  const after = reconcileKeys(readSettings(config({
+    discord: { clientId: '1' },
+    presence: { modelImages: [{ asset: 'mine', patterns: ['x'] }] },
+  })))
+  assert.notEqual(after.render, before.render, 'the card must be re-rendered')
+  assert.equal(after.transport, before.transport, 'the Discord connection survives the edit')
+  assert.equal(after.update, before.update)
 })

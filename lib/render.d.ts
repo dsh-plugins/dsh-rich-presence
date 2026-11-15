@@ -48,6 +48,33 @@ export interface PresenceSnapshot {
     /** Epoch milliseconds when the current turn started. */
     turnStart?: number;
 }
+/**
+ * One rule mapping model-id keywords to an uploaded image asset.
+ *
+ * The asset names the large image; every pattern is a prefix of one word of the
+ * lower-cased model id. Rules are tried in order, so the first match wins.
+ */
+export interface ModelImageRule {
+    /** Asset name uploaded to the Discord application. */
+    asset: string;
+    /** Word prefixes that select this asset, such as `deepseek` or `k3`. */
+    patterns: string[];
+}
+/** Default model-image rules, one per model family the plugin recognises. */
+export declare const DEFAULT_MODEL_IMAGES: ModelImageRule[];
+/**
+ * Choose the large image for one model id.
+ *
+ * Matching is per word rather than per substring: a pattern must be a prefix of
+ * a whole word of the model id. Substring matching would let `o1` claim
+ * `sao10k/l3.1-euryale-70b` and `o4` claim `upstage/solar-pro4`, which silently
+ * shows one vendor's logo for another vendor's model.
+ *
+ * @param model - model id of the selected route.
+ * @param rules - configured rules, in priority order.
+ * @returns the matching asset name, or `undefined` when nothing matches.
+ */
+export declare function modelImageOf(model: string | undefined, rules: readonly ModelImageRule[] | undefined): string | undefined;
 /** The activity object Discord accepts for `SET_ACTIVITY`. */
 export interface ActivityPayload {
     type?: number;
@@ -80,6 +107,8 @@ export interface RenderConfig {
     smallText: string;
     /** Asset name of the large image, uploaded to the Discord application; empty omits it. */
     largeImage: string;
+    /** Rules that override `largeImage` with an asset matching the running model. */
+    modelImages?: readonly ModelImageRule[];
     /** Asset name of the small image while the agent works; empty omits it. */
     smallImageRunning: string;
     /** Asset name of the small image while the agent is idle; empty omits it. */

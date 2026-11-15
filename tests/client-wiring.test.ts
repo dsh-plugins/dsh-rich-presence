@@ -321,3 +321,57 @@ test('each control is styled, so no field renders as a bare browser element', ()
   const styled = new Set([...css.matchAll(/\.(rp-[a-z-]+)/g)].map(match => match[1]))
   assert.deepEqual([...markup].filter(name => !styled.has(name)), [], 'every rendered class has a rule')
 })
+
+/**
+ * Collect every element in a rendered tree that carries an `id` prop.
+ *
+ * The form is one tree of host elements, so the walker follows the children
+ * arrays the fake `createElement` stores rather than unwrapping components.
+ *
+ * @param element - rendered root.
+ * @returns element ids in document order.
+ */
+function elementIds(element: unknown): string[] {
+  const ids: string[] = []
+  const visit = (node: unknown): void => {
+    if (typeof node !== 'object' || node === null) return
+    if (Array.isArray(node)) {
+      for (const child of node) visit(child)
+      return
+    }
+    const candidate = node as { props?: { id?: unknown; children?: unknown }; children?: unknown }
+    if (typeof candidate.props?.id === 'string') ids.push(candidate.props.id)
+    visit(candidate.children)
+    visit(candidate.props?.children)
+  }
+  visit(element)
+  return ids
+}
+
+test('the form offers a large-image rule editor beside the fixed asset fields', () => {
+  const bundle = evaluateBundle()
+  const rendered = render(bundle.slot.view({ view: 'page', t: (key: string) => key }))
+  const ids = elementIds(rendered)
+  assert.ok(ids.includes('rp-model-images'), 'the rule editor must render, or the field is unreachable')
+  assert.ok(ids.includes('rp-large-image'), 'the fixed fallback asset stays editable')
+  assert.ok(
+    ids.indexOf('rp-large-image') < ids.indexOf('rp-model-images'),
+    'the fallback reads before the rules that override it',
+  )
+})
+
+test('the model-image editor parses and serializes with the shared rule format', () => {
+  // The artifact cannot be imported, so the two helpers are pinned by shape: the
+  // Host parser in src/settings.ts is the one both sides must agree with.
+  const serializer = client.slice(client.indexOf('function modelImagesOf'), client.indexOf('function parseButtons'))
+  assert.ok(serializer.length > 0, 'the serializer must exist')
+  assert.match(serializer, /join\(', '\)/, 'keywords are joined with the separator the parser splits on')
+  assert.match(serializer, /:` *\$\{item\.asset\}|\$\{item\.asset\}: /, 'the asset name leads every line')
+  // Sorting would silently reorder the priority list, which decides the image.
+  assert.doesNotMatch(serializer, /sort\(/, 'rule order is priority order and must not be sorted')
+
+  const parser = client.slice(client.indexOf('function parseModelImages'), client.indexOf('function useStyles'))
+  assert.ok(parser.length > 0, 'the parser must exist')
+  assert.match(parser, /\^\[A-Za-z0-9_\]\+\$/, 'the asset name uses the character set the portal accepts')
+  assert.match(parser, /split\(','\)/, 'keywords are comma separated')
+})

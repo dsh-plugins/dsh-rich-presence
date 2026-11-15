@@ -60,6 +60,8 @@ window.__ModuleLoader__.load({
         smallText: 'Small image tooltip',
         largeImage: 'Large image asset',
         largeImageHint: 'Must match an asset uploaded to your Discord application. Leave empty to use the application icon.',
+        modelImages: 'Large image per model',
+        modelImagesHint: 'One per line as "asset: keyword, keyword". A keyword matches when it starts a word of the model id; the first matching line wins. An unmatched model uses the large image above.',
         smallImageRunning: 'Small image while working',
         smallImageIdle: 'Small image while idle',
         labels: 'Phase wording',
@@ -85,6 +87,7 @@ window.__ModuleLoader__.load({
         invalidNumber: 'Enter a number between {min} and {max}.',
         invalidUrl: 'Each button needs "label | https://…".',
         invalidLabel: 'Each line needs "key: text" with a plain-word key.',
+        invalidModelImage: 'Each line needs "asset: keyword, keyword" with letters, digits, or underscores.',
         placeholders: 'Placeholders: ' + PLACEHOLDERS.join(' '),
       },
       zh: {
@@ -121,6 +124,8 @@ window.__ModuleLoader__.load({
         smallText: '小图悬停文字',
         largeImage: '大图资产名',
         largeImageHint: '必须和你 Discord 应用里上传的资产同名。留空则使用应用图标。',
+        modelImages: '按模型切换大图',
+        modelImagesHint: '每行一个，格式 "资产名: 关键词, 关键词"。模型 id 里某个词以关键词开头就算命中，从上到下第一个命中的生效；都没命中时用上面的「大图资产名」。',
         smallImageRunning: '运行中的小图',
         smallImageIdle: '空闲时的小图',
         labels: '状态措辞',
@@ -146,6 +151,7 @@ window.__ModuleLoader__.load({
         invalidNumber: '请输入 {min} 到 {max} 之间的数字。',
         invalidUrl: '每个按钮都需要 "标签 | https://…"。',
         invalidLabel: '每行都需要 "键: 文本"，键必须是普通单词。',
+        invalidModelImage: '每行都需要 "资产名: 关键词, 关键词"，只能用字母、数字和下划线。',
         placeholders: '可用占位符：' + PLACEHOLDERS.join(' '),
       },
     };
@@ -229,6 +235,20 @@ window.__ModuleLoader__.load({
       return Object.keys(value).sort().map(key => `${key}: ${value[key]}`).join('\n');
     }
 
+    /**
+     * Render model-image rules as the text area format, keeping their order.
+     *
+     * Unlike the label overrides this is never sorted: line order is the
+     * priority order the renderer uses to pick the first match.
+     */
+    function modelImagesOf(value) {
+      if (!Array.isArray(value)) return '';
+      return value
+        .filter(item => item && typeof item.asset === 'string' && Array.isArray(item.patterns))
+        .map(item => `${item.asset}: ${item.patterns.filter(pattern => typeof pattern === 'string').join(', ')}`)
+        .join('\n');
+    }
+
     /** Parse buttons back, reporting the first problem. */
     function parseButtons(text) {
       const entries = [];
@@ -258,6 +278,28 @@ window.__ModuleLoader__.load({
         records[key] = line.slice(cut + 1).trim();
       }
       return { records };
+    }
+
+    /** Parse model-image rules back, keeping their order and reporting the first problem. */
+    function parseModelImages(text) {
+      const entries = [];
+      for (const raw of text.split(/\r?\n/)) {
+        const line = raw.trim();
+        if (!line) continue;
+        const cut = line.indexOf(':');
+        if (cut < 0) return { error: true };
+        const asset = line.slice(0, cut).trim();
+        if (!/^[A-Za-z0-9_]+$/.test(asset)) return { error: true };
+        const patterns = line
+          .slice(cut + 1)
+          .split(',')
+          .map(pattern => pattern.trim())
+          .filter(pattern => pattern.length > 0);
+        if (patterns.length === 0) return { error: true };
+        if (patterns.some(pattern => !/^[A-Za-z0-9]+$/.test(pattern))) return { error: true };
+        entries.push({ asset, patterns });
+      }
+      return { entries };
     }
 
     /** Render the injected stylesheet once per mounted form. */
@@ -327,7 +369,7 @@ window.__ModuleLoader__.load({
      * value. Only a parseable text replaces the draft.
      */
     function ParsedArea(props) {
-      const { id, label, hint, disabled, serialize, parse, onChange, value, t, errorText } = props;
+      const { id, label, hint, disabled, serialize, parse, onChange, value, t, errorText, rows } = props;
       const accepted = serialize(value);
       const [text, setText] = React.useState(accepted);
       const [touched, setTouched] = React.useState(false);
@@ -340,6 +382,9 @@ window.__ModuleLoader__.load({
         error: invalid && touched ? errorText : undefined,
       }, h('textarea', {
         id, className: 'rp-area', spellCheck: false, disabled,
+        // A rule list opens showing its whole default, so the person sees what
+        // already applies instead of an empty-looking box that scrolls.
+        ...rows === undefined ? {} : { rows },
         'aria-invalid': invalid && touched ? 'true' : 'false',
         value: text,
         onChange: event => {
@@ -522,6 +567,14 @@ window.__ModuleLoader__.load({
               value: at(current, ['presence', 'smallImageIdle']) ?? '',
               onChange: event => put('presence', 'smallImageIdle', event.target.value.trim()),
             })),
+          h(ParsedArea, {
+            t, id: 'rp-model-images', label: t('modelImages'), hint: t('modelImagesHint'), disabled,
+            errorText: t('invalidModelImage'),
+            value: at(current, ['presence', 'modelImages']) ?? [],
+            rows: 8,
+            serialize: modelImagesOf, parse: parseModelImages,
+            onChange: parsed => put('presence', 'modelImages', parsed.entries),
+          }),
           h(ParsedArea, {
             t, id: 'rp-labels', label: t('labels'), hint: t('labelsHint'), disabled,
             errorText: t('invalidLabel'),

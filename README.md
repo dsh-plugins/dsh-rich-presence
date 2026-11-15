@@ -44,6 +44,41 @@ small_text = Running bash
 6. `Queued input` — 空闲但收件箱里还有排队输入
 7. `Idle` — 在线但空闲
 
+## 大图随模型切换
+
+大图不是固定的：插件按当前会话实际用的模型 id 挑一张你上传的资产，所以同一块卡片在换成别的模型时会换图。小图固定是 `deepseek_harness`，表示「这是 DSH 在跑」。
+
+默认规则（行序即优先级，第一个命中生效）：
+
+| 大图资产 | 关键词 | 典型 id |
+|---|---|---|
+| `claude` | claude, anthropic, sonnet, opus, haiku, fable | `claude-opus-4.8`、`claude-sonnet-5.5` |
+| `deepseek` | deepseek | `deepseek-v4.1-flash`、`deepseek-v4-pro` |
+| `gemini` | gemini | `gemini-3.8-flash` |
+| `glm` | glm, chatglm, zhipu | `glm-5.3`、`glm-4.6v` |
+| `gpt` | gpt, openai, chatgpt, o1, o3, o4 | `gpt-6.1-sol`、`gpt-image-2.5`、`o4-mini` |
+| `grok` | grok | `grok-4.7` |
+| `kimi` | kimi, moonshot, k2, k3 | `kimi-k3.1-pro`、`kimi-k2-thinking`，以及网关别名 `k3`、`k3-256k`、`kimi-for-coding` |
+| `qwen` | qwen, qwq, qianwen | `qwen3.8-max`、`qwen-plus` |
+
+**匹配规则**：模型 id 转小写后按非字母数字切成词（`k3-256k` → `k3`、`256k`），某个词**以**关键词开头就算命中。
+
+- 为什么不是「包含」：子串匹配会让 `o1` 命中 `sao10k/l3.1-euryale-70b`、`o4` 命中 `upstage/solar-pro4`，把别家的模型配上 OpenAI 的图，且不会有任何报错。
+- 只看模型 id，**不看 provider**：provider 名（如 `mclans-gpt`）和模型对不对得上是两件事，拿它匹配会拿错图。
+- 关键词只能用字母和数字，资产名只能用字母、数字和下划线（Discord 资产名字符集），写错的行会被表单标红而不是静默失效。
+
+**没命中会怎样**：用 `presence.largeImage`（默认空 → 卡片用你的 Discord 应用图标）。自建网关的别名（比如 `my-private-model`）就属于这一类，在「按模型切换大图」里加一行 `kimi: my-private-model` 即可。
+
+在插件页的 **显示** 组里，这一项是「按模型切换大图」文本框：
+
+```
+claude: claude, anthropic
+deepseek: deepseek
+kimi: kimi, k3
+```
+
+清空这个框 = 关掉按模型切换，只用上面那张固定大图。
+
 ## 安装
 
 本插件是 Host-only bundle，不需要客户端代码：
@@ -82,7 +117,7 @@ rich-presence (log transport, no discord.clientId): {"type":0,"details":"Thinkin
 
 1. 打开 <https://discord.com/developers/applications>，点 **New Application**，起个名字（这个名字会显示成 "*Playing* **名字**"）。
 2. 在 **General Information** 里复制 **Application ID**（纯数字，不是 client secret，也不是 token）。
-3. 想让卡片出现图片和悬停文字的话，去 **Rich Presence → Art Assets** 上传图片，把上传时填的图片名填进表单里「大图资产名」/「运行中的小图」/「空闲时的小图」。**名字必须和已上传资产完全一致**，否则 Discord 会把图丢掉而插件这边不会有报错。
+3. 想让卡片出现图片和悬停文字的话，去 **Rich Presence → Art Assets** 上传图片：各族模型的大图命名成 `claude` / `deepseek` / `gemini` / `glm` / `gpt` / `grok` / `kimi` / `qwen`，小图命名成 `deepseek_harness`，默认配置就位；用别的名字就到表单里改「按模型切换大图」/「运行中的小图」/「空闲时的小图」。**名字必须和已上传资产完全一致**，否则 Discord 会把图丢掉而插件这边不会有报错。
 4. 回到 **Plugins → Discord 活动状态**，把 **应用 ID** 填进去，**保存**。
 
 保存后会立刻连上 Discord（不用重启），日志出现 `connected to the discord client`，资料页上出现活动卡片。
@@ -112,11 +147,12 @@ rich-presence (log transport, no discord.clientId): {"type":0,"details":"Thinkin
 | `discord.buttons` | `[]` | 最多两个 `{label, url}`，用于挂链接 |
 | `presence.details` | `{activity} · {folder}` | 第一行模板 |
 | `presence.state` | `{model} · {context} · {tokens}` | 第二行模板 |
-| `presence.largeText` | `{progress}` | 大图悬停文字（需配 `largeImage` 才可见） |
+| `presence.largeText` | `{progress}` | 大图悬停文字（大图有图才可见：模型规则或 `largeImage` 命中，否则挂在应用图标上） |
 | `presence.smallText` | `{activity} · {subagents}` | 小图悬停文字（需配小图才可见） |
-| `presence.largeImage` | 空 | 大图资产名（需先在应用里上传同名图片） |
-| `presence.smallImageRunning` | 空 | 运行中的小图资产名 |
-| `presence.smallImageIdle` | 空 | 空闲时的小图资产名 |
+| `presence.largeImage` | 空 | 固定的大图资产名（需先在应用里上传同名图片）；按模型切换没命中时用它 |
+| `presence.modelImages` | 8 条默认规则 | 按模型切换大图：`{asset, patterns}` 数组，行序即优先级，见上一节 |
+| `presence.smallImageRunning` | `deepseek_harness` | 运行中的小图资产名 |
+| `presence.smallImageIdle` | `deepseek_harness` | 空闲时的小图资产名 |
 | `presence.labels` | `{}` | 换语言用：`{ thinking: 思考, tool: "正在运行 {tool}", idle: 空闲 }`；键为 approval / compacting / tool / toolHidden / thinking / working / queued / idle |
 | `presence.elapsed` | `turn` | 计时起点：`turn` / `session` / `off`；`session` 会在恢复的旧会话上显示几十小时的计时 |
 | `presence.truncateAt` | `128` | 每个字段最大字符数（Discord 上限 128） |

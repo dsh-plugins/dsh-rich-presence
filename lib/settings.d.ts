@@ -13,7 +13,7 @@
  * @module dsh-rich-presence/settings
  */
 import type { Volatile } from '@deepseek-ai/cordis';
-import type { RenderConfig } from './render.ts';
+import { type ModelImageRule, type RenderConfig } from './render.ts';
 /** Discord's four activity types this plugin offers. */
 export type ActivityType = 0 | 2 | 3 | 5;
 /** One clickable card button. */
@@ -34,6 +34,7 @@ export interface PresenceSettings {
     largeText: string;
     smallText: string;
     largeImage: string;
+    modelImages: ModelImageRule[];
     smallImageRunning: string;
     smallImageIdle: string;
     labels: Record<string, string>;
@@ -175,6 +176,26 @@ export declare function parseLabels(text: string): ParseResultMap;
  * @returns one `key: value` line per override, sorted for a stable display.
  */
 export declare function formatLabels(labels: Record<string, string>): string;
+/**
+ * Parse the model-image text area: one `asset: keyword, keyword` rule per line.
+ *
+ * The asset name is what Discord looks up, so it is held to the same character
+ * set the developer portal accepts; a keyword is matched against one word of
+ * the model id, so punctuation there can never match and is rejected here
+ * rather than failing silently at render time.
+ *
+ * Line order is the priority order, so it is preserved rather than sorted.
+ *
+ * @param text - multi-line rule input.
+ * @returns accepted rules in input order and one error per malformed line.
+ */
+export declare function parseModelImages(text: string): ParseResult<ModelImageRule>;
+/**
+ * Serialize model-image rules back into the text area format.
+ * @param rules - stored rules, in priority order.
+ * @returns one line per rule.
+ */
+export declare function formatModelImages(rules: readonly ModelImageRule[]): string;
 /**
  * Parse the extra-endpoint text area: one endpoint per line.
  * @param text - multi-line endpoint input.

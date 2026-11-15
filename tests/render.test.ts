@@ -1,7 +1,15 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { PresenceSnapshot, RenderConfig } from '../src/render.ts'
-import { DISCORD_TEXT_LIMIT, expandTemplate, fitField, formatCompactTokens, renderActivity } from '../src/render.ts'
+import {
+  DEFAULT_MODEL_IMAGES,
+  DISCORD_TEXT_LIMIT,
+  expandTemplate,
+  fitField,
+  formatCompactTokens,
+  modelImageOf,
+  renderActivity,
+} from '../src/render.ts'
 
 const config: RenderConfig = {
   details: '{activity} · {folder}',
@@ -160,4 +168,69 @@ test('a label without the tool placeholder does not lose the tool name silently'
   const labels = { tool: 'Busy' }
   const activity = renderActivity({ phase: 'tool', toolName: 'Bash', subagents: 0 }, { ...config, labels }, true, true)
   assert.equal(activity?.details, 'Busy')
+})
+
+test('a model id picks its family image, and the first matching rule wins', () => {
+  assert.equal(modelImageOf('deepseek-v4.1-flash', DEFAULT_MODEL_IMAGES), 'deepseek')
+  assert.equal(modelImageOf('gpt-6-astra', DEFAULT_MODEL_IMAGES), 'gpt')
+  assert.equal(modelImageOf('claude-opus-4.8', DEFAULT_MODEL_IMAGES), 'claude')
+  assert.equal(modelImageOf('gemini-4-hydrogen', DEFAULT_MODEL_IMAGES), 'gemini')
+  assert.equal(modelImageOf('glm-5.3-flash', DEFAULT_MODEL_IMAGES), 'glm')
+  assert.equal(modelImageOf('grok-4.7', DEFAULT_MODEL_IMAGES), 'grok')
+  assert.equal(modelImageOf('qwen3.8-max', DEFAULT_MODEL_IMAGES), 'qwen')
+  assert.equal(modelImageOf('DeepSeek-V4-Pro', DEFAULT_MODEL_IMAGES), 'deepseek', 'matching ignores case')
+
+  // A gateway alias keeps the family name only in its short form.
+  assert.equal(modelImageOf('k3', DEFAULT_MODEL_IMAGES), 'kimi')
+  assert.equal(modelImageOf('k3-256k', DEFAULT_MODEL_IMAGES), 'kimi')
+  assert.equal(modelImageOf('kimi-for-coding-highspeed', DEFAULT_MODEL_IMAGES), 'kimi')
+
+  const custom = [
+    { asset: 'first', patterns: ['shared'] },
+    { asset: 'second', patterns: ['shared', 'other'] },
+  ]
+  assert.equal(modelImageOf('shared-model', custom), 'first', 'line order is priority order')
+  assert.equal(modelImageOf('other-model', custom), 'second')
+})
+
+test('a keyword must start a word, so short OpenAI names cannot claim another vendor', () => {
+  // Substring matching would let `o1` claim `sao10k` and `o4` claim `solar-pro4`,
+  // which shows the wrong vendor's logo with no visible error.
+  assert.equal(modelImageOf('sao10k/l3.1-euryale-70b', DEFAULT_MODEL_IMAGES), undefined)
+  assert.equal(modelImageOf('upstage/solar-pro4', DEFAULT_MODEL_IMAGES), undefined)
+  assert.equal(modelImageOf('openai/o3-pro', DEFAULT_MODEL_IMAGES), 'gpt')
+  // A later word still counts: `qwen3` starts with the keyword `qwen`.
+  assert.equal(modelImageOf('vllm-hosted/qwen3-coder', DEFAULT_MODEL_IMAGES), 'qwen')
+})
+
+test('an unknown or absent model has no family image', () => {
+  assert.equal(modelImageOf(undefined, DEFAULT_MODEL_IMAGES), undefined)
+  assert.equal(modelImageOf('', DEFAULT_MODEL_IMAGES), undefined)
+  assert.equal(modelImageOf('my-private-model', DEFAULT_MODEL_IMAGES), undefined)
+  assert.equal(modelImageOf('deepseek-v4.1-flash', undefined), undefined)
+  assert.equal(modelImageOf('deepseek-v4.1-flash', []), undefined)
+  // A hand-written pattern with punctuation can never match a word, so it is
+  // skipped instead of being compared literally.
+  assert.equal(modelImageOf('deepseek-v4.1-flash', [{ asset: 'broken', patterns: ['deep-seek'] }]), undefined)
+  assert.equal(modelImageOf('deepseek-v4.1-flash', [{ asset: '  ', patterns: ['deepseek'] }]), undefined)
+})
+
+test('the large image follows the model and falls back to the fixed asset', () => {
+  const rules = DEFAULT_MODEL_IMAGES
+  const withRules = { ...config, largeImage: 'logo', modelImages: rules }
+
+  const kimi = renderActivity({ phase: 'idle', subagents: 0, model: 'k3' }, withRules, true, true)
+  assert.equal(kimi?.assets?.large_image, 'kimi')
+  assert.equal(kimi?.assets?.large_text, undefined, 'no usage means no hover text')
+
+  const unknown = renderActivity({ phase: 'idle', subagents: 0, model: 'my-private-model' }, withRules, true, true)
+  assert.equal(unknown?.assets?.large_image, 'logo', 'an unmatched model keeps the fixed asset')
+
+  const noModel = renderActivity({ phase: 'idle', subagents: 0 }, withRules, true, true)
+  assert.equal(noModel?.assets?.large_image, 'logo')
+
+  // With no fixed asset either, the key disappears so Discord shows the
+  // application icon rather than a broken image.
+  const bare = renderActivity({ phase: 'idle', subagents: 0, model: 'my-private-model' }, { ...config, modelImages: rules }, true, true)
+  assert.equal(bare?.assets?.large_image, undefined)
 })

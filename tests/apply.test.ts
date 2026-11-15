@@ -18,11 +18,13 @@ function harness(options: {
 } = {}) {
   const logs: { level: string; message: string; args: unknown[] }[] = []
   const payloads: unknown[] = []
+  const listeners = new Map<string, ((...args: unknown[]) => void)[]>()
   const folded = new Map<unknown, unknown>()
+  let modelId = 'deepseek-v4.1-flash'
   const agent = {
     status: 'running',
     options: {},
-    model: { current: () => ({ provider: 'mclans', model: 'deepseek-v4.1-flash', reasoningEffort: 'high' }) },
+    model: { current: () => ({ provider: 'mclans', model: modelId, reasoningEffort: 'high' }) },
     inbox: { nextTurn: [], nextStep: [] },
     session: {
       id: 'session-test',
@@ -55,10 +57,16 @@ function harness(options: {
     logger: () => ({
       info: (message: string, ...args: unknown[]) => logs.push({ level: 'info', message, args }),
       warn: (message: string, ...args: unknown[]) => logs.push({ level: 'warn', message, args }),
-      debug: () => {},
+      // Later payloads reach the log transport at debug level, so they are
+      // recorded too: a test that switches the model mid-run needs them.
+      debug: (message: string, ...args: unknown[]) => logs.push({ level: 'debug', message, args }),
     }),
     effect: (factory: () => (() => void) | void) => { factory() },
-    on: () => {},
+    on: (event: string, handler: (...args: unknown[]) => void) => {
+      const existing = listeners.get(event) ?? []
+      existing.push(handler)
+      listeners.set(event, existing)
+    },
     get: (name: string) => name === 'sessionProjections' ? projections : undefined,
     agents: {
       list: () => options.agent === false ? [] : [agent],
@@ -67,7 +75,12 @@ function harness(options: {
     sessionProjections: projections,
     transportSink: payloads,
   }
-  return { ctx: ctx as unknown as Context, logs, payloads }
+  /** Switch the route the agent reports, then let the plugin notice, as a real switch does. */
+  const switchModel = (next: string): void => {
+    modelId = next
+    for (const handler of listeners.get('agent/status') ?? []) handler({ agent })
+  }
+  return { ctx: ctx as unknown as Context, logs, payloads, switchModel }
 }
 
 /** The logs the log transport produced, parsed back into payloads. */
@@ -103,8 +116,32 @@ test('the default configuration renders a busy session with every visible field'
     details: 'Running Bash · dsh',
     state: 'deepseek-v4.1-flash · 42.1K · in 85.7K (3.4K cached) · out 12.1K',
     timestamps: { start: 1_790_000_000_000 },
-    assets: { large_text: 'turn 1 · step 2', small_text: 'Running Bash' },
+    assets: {
+      large_image: 'deepseek',
+      large_text: 'turn 1 · step 2',
+      small_image: 'deepseek_harness',
+      small_text: 'Running Bash',
+    },
   })
+})
+
+test('switching the running model switches the large image', async () => {
+  // The rate limits are relaxed so the second payload is not swallowed by the
+  // 15-second spacing the production defaults impose.
+  const { ctx, logs, switchModel } = harness({ events: busyEvents })
+  apply(ctx, new Config({ update: { debounceMs: 10, minIntervalMs: 0 } }) as Config)
+  await new Promise(resolve => setTimeout(resolve, 60))
+  assert.equal((payloadsFrom(logs)[0] as { assets?: { large_image?: string } }).assets?.large_image, 'deepseek')
+
+  switchModel('k3')
+  await new Promise(resolve => setTimeout(resolve, 60))
+  const after = payloadsFrom(logs).at(-1) as { assets?: { large_image?: string } }
+  assert.equal(after.assets?.large_image, 'kimi', 'a gateway alias for a kimi model picks the kimi asset')
+
+  switchModel('my-private-model')
+  await new Promise(resolve => setTimeout(resolve, 60))
+  const unmatched = payloadsFrom(logs).at(-1) as { assets?: { large_image?: string } }
+  assert.equal(unmatched.assets?.large_image, undefined, 'an unrecognised model falls back to the application icon')
 })
 
 test('without token-meter the related segments disappear instead of showing placeholders', async () => {
@@ -125,7 +162,7 @@ test('with no live agent the card says Idle, and the log transport explains why 
   await new Promise(resolve => setTimeout(resolve, 700))
 
   const payloads = payloadsFrom(logs)
-  assert.deepEqual(payloads, [{ type: 0, details: 'Idle', assets: { small_text: 'Idle' } }])
+  assert.deepEqual(payloads, [{ type: 0, details: 'Idle', assets: { small_image: 'deepseek_harness', small_text: 'Idle' } }])
   assert.ok(
     logs.some(entry => entry.level === 'info' && entry.message.includes('no discord.clientId configured')),
     'the operator is told why nothing reaches Discord',

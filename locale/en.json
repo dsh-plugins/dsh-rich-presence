@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Rich presence",
-    "description": "Shows the running agent on your Discord profile: whether it is thinking, running a tool, waiting for approval, or compacting, with the model route and token usage. Everything is configured on this page — open the bundle to edit, save writes live without a restart. A Discord Application ID from discord.com/developers/applications is required to publish; leave it empty to write the payloads to the log first. Tool names and the working-folder name are published by default — turn them off under Privacy to withhold them. Image tooltips appear once the asset names match images uploaded to your application. Figures fold the session log, so they survive resume, fork, and compaction. Turning the plugin off clears the activity immediately.",
+    "description": "Shows the running agent on your Discord profile: whether it is thinking, running a tool, waiting for approval, or compacting, with the model route and token usage. The large image follows the running model — one each for claude, deepseek, gemini, glm, gpt, grok, kimi, and qwen — with the DSH badge as the small image. Everything is configured on this page — open the bundle to edit, save writes live without a restart. A Discord Application ID from discord.com/developers/applications is required to publish; leave it empty to write the payloads to the log first. Tool names and the working-folder name are published by default — turn them off under Privacy to withhold them. Image tooltips appear once the asset names match images uploaded to your application. Figures fold the session log, so they survive resume, fork, and compaction. Turning the plugin off clears the activity immediately.",
     "detail": "docs/DETAIL.md"
   }
 }

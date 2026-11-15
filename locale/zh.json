@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Discord 活动状态",
-    "description": "把正在运行的 agent 显示在 Discord 个人资料上：它是在思考、在跑工具、在等你审批，还是在压缩上下文，同时带上模型路由与 token 用量。所有配置都在本页完成——打开这个 bundle 就能改，保存后即时生效、无需重启。要真正推送需要一个 Discord 应用 ID（discord.com/developers/applications）；留空则先把载荷写进日志。默认会公开工具名与工作目录名，不想公开就到「隐私」里关掉。悬停文字需要资产名与已上传图片对应。数据由会话日志折叠而来，恢复、分叉与压缩后保持一致。关闭插件会立即清除活动状态。",
+    "description": "把正在运行的 agent 显示在 Discord 个人资料上：它是在思考、在跑工具、在等你审批，还是在压缩上下文，同时带上模型路由与 token 用量。大图会随当前模型自动切换（claude / deepseek / gemini / glm / gpt / grok / kimi / qwen 各一张，小图固定为 DSH 徽标）。所有配置都在本页完成——打开这个 bundle 就能改，保存后即时生效、无需重启。要真正推送需要一个 Discord 应用 ID（discord.com/developers/applications）；留空则先把载荷写进日志。默认会公开工具名与工作目录名，不想公开就到「隐私」里关掉。悬停文字需要资产名与已上传图片对应。数据由会话日志折叠而来，恢复、分叉与压缩后保持一致。关闭插件会立即清除活动状态。",
     "detail": "docs/DETAIL.zh.md"
   }
 }

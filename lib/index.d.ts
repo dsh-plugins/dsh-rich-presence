@@ -73,6 +73,13 @@ export declare const Config: z<Schemastery.ObjectS<NoInfer<{
         largeText: z<string, string, "defined">;
         smallText: z<string, string, "defined">;
         largeImage: z<string, string, "defined">;
+        modelImages: z<({
+            asset?: string | null | undefined;
+            patterns?: string[] | null | undefined;
+        } & import("@deepseek-ai/cosmokit").Dict)[], Schemastery.ObjectT<NoInfer<{
+            asset: z<string, string, "plain">;
+            patterns: z<string[], string[], "plain">;
+        }>>[], "defined">;
         smallImageRunning: z<string, string, "defined">;
         smallImageIdle: z<string, string, "defined">;
         labels: z<import("@deepseek-ai/cosmokit").Dict<string, string>, import("@deepseek-ai/cosmokit").Dict<string, string>, "defined">;
@@ -85,6 +92,13 @@ export declare const Config: z<Schemastery.ObjectS<NoInfer<{
         largeText: z<string, string, "defined">;
         smallText: z<string, string, "defined">;
         largeImage: z<string, string, "defined">;
+        modelImages: z<({
+            asset?: string | null | undefined;
+            patterns?: string[] | null | undefined;
+        } & import("@deepseek-ai/cosmokit").Dict)[], Schemastery.ObjectT<NoInfer<{
+            asset: z<string, string, "plain">;
+            patterns: z<string[], string[], "plain">;
+        }>>[], "defined">;
         smallImageRunning: z<string, string, "defined">;
         smallImageIdle: z<string, string, "defined">;
         labels: z<import("@deepseek-ai/cosmokit").Dict<string, string>, import("@deepseek-ai/cosmokit").Dict<string, string>, "defined">;
@@ -152,6 +166,13 @@ export declare const Config: z<Schemastery.ObjectS<NoInfer<{
         largeText: z<string, string, "defined">;
         smallText: z<string, string, "defined">;
         largeImage: z<string, string, "defined">;
+        modelImages: z<({
+            asset?: string | null | undefined;
+            patterns?: string[] | null | undefined;
+        } & import("@deepseek-ai/cosmokit").Dict)[], Schemastery.ObjectT<NoInfer<{
+            asset: z<string, string, "plain">;
+            patterns: z<string[], string[], "plain">;
+        }>>[], "defined">;
         smallImageRunning: z<string, string, "defined">;
         smallImageIdle: z<string, string, "defined">;
         labels: z<import("@deepseek-ai/cosmokit").Dict<string, string>, import("@deepseek-ai/cosmokit").Dict<string, string>, "defined">;
@@ -164,6 +185,13 @@ export declare const Config: z<Schemastery.ObjectS<NoInfer<{
         largeText: z<string, string, "defined">;
         smallText: z<string, string, "defined">;
         largeImage: z<string, string, "defined">;
+        modelImages: z<({
+            asset?: string | null | undefined;
+            patterns?: string[] | null | undefined;
+        } & import("@deepseek-ai/cosmokit").Dict)[], Schemastery.ObjectT<NoInfer<{
+            asset: z<string, string, "plain">;
+            patterns: z<string[], string[], "plain">;
+        }>>[], "defined">;
         smallImageRunning: z<string, string, "defined">;
         smallImageIdle: z<string, string, "defined">;
         labels: z<import("@deepseek-ai/cosmokit").Dict<string, string>, import("@deepseek-ai/cosmokit").Dict<string, string>, "defined">;

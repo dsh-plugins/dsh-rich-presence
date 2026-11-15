@@ -14,7 +14,7 @@
  */
 
 import type { Volatile } from '@deepseek-ai/cordis'
-import type { RenderConfig } from './render.ts'
+import { DEFAULT_MODEL_IMAGES, type ModelImageRule, type RenderConfig } from './render.ts'
 
 /** Discord's four activity types this plugin offers. */
 export type ActivityType = 0 | 2 | 3 | 5
@@ -39,6 +39,7 @@ export interface PresenceSettings {
   largeText: string
   smallText: string
   largeImage: string
+  modelImages: ModelImageRule[]
   smallImageRunning: string
   smallImageIdle: string
   labels: Record<string, string>
@@ -119,8 +120,9 @@ export const DEFAULTS: SettingsSnapshot = {
     largeText: '{progress}',
     smallText: '{activity} · {subagents}',
     largeImage: '',
-    smallImageRunning: '',
-    smallImageIdle: '',
+    modelImages: DEFAULT_MODEL_IMAGES.map(rule => ({ asset: rule.asset, patterns: [...rule.patterns] })),
+    smallImageRunning: 'deepseek_harness',
+    smallImageIdle: 'deepseek_harness',
     labels: {},
     elapsed: 'turn',
     truncateAt: MAX_TEXT,
@@ -183,6 +185,7 @@ export function renderConfigOf(settings: SettingsSnapshot): RenderConfig {
     largeText: presence.largeText,
     smallText: presence.smallText,
     largeImage: presence.largeImage,
+    modelImages: presence.modelImages,
     smallImageRunning: presence.smallImageRunning,
     smallImageIdle: presence.smallImageIdle,
     labels: presence.labels,
@@ -231,6 +234,7 @@ export function reconcileKeys(settings: SettingsSnapshot): ReconcileKeys {
       presence.largeText,
       presence.smallText,
       presence.largeImage,
+      presence.modelImages,
       presence.smallImageRunning,
       presence.smallImageIdle,
       presence.labels,
@@ -350,6 +354,57 @@ export function parseLabels(text: string): ParseResultMap {
  */
 export function formatLabels(labels: Record<string, string>): string {
   return Object.keys(labels).sort().map(key => `${key}: ${labels[key]}`).join('\n')
+}
+
+/**
+ * Parse the model-image text area: one `asset: keyword, keyword` rule per line.
+ *
+ * The asset name is what Discord looks up, so it is held to the same character
+ * set the developer portal accepts; a keyword is matched against one word of
+ * the model id, so punctuation there can never match and is rejected here
+ * rather than failing silently at render time.
+ *
+ * Line order is the priority order, so it is preserved rather than sorted.
+ *
+ * @param text - multi-line rule input.
+ * @returns accepted rules in input order and one error per malformed line.
+ */
+export function parseModelImages(text: string): ParseResult<ModelImageRule> {
+  const entries: ModelImageRule[] = []
+  const errors: string[] = []
+  for (const line of lines(text)) {
+    const separator = line.indexOf(':')
+    if (separator < 0) {
+      errors.push(`Expected "asset: keyword, keyword": ${line}`)
+      continue
+    }
+    const asset = line.slice(0, separator).trim()
+    const patterns = line.slice(separator + 1).split(',').map(pattern => pattern.trim()).filter(pattern => pattern.length > 0)
+    if (!/^[A-Za-z0-9_]+$/.test(asset)) {
+      errors.push(`Image asset names use letters, digits, and underscores: ${line}`)
+      continue
+    }
+    if (patterns.length === 0) {
+      errors.push(`Missing model keyword: ${line}`)
+      continue
+    }
+    const bad = patterns.find(pattern => !/^[A-Za-z0-9]+$/.test(pattern))
+    if (bad !== undefined) {
+      errors.push(`Model keywords use letters and digits: ${bad}`)
+      continue
+    }
+    entries.push({ asset, patterns })
+  }
+  return { entries, errors }
+}
+
+/**
+ * Serialize model-image rules back into the text area format.
+ * @param rules - stored rules, in priority order.
+ * @returns one line per rule.
+ */
+export function formatModelImages(rules: readonly ModelImageRule[]): string {
+  return rules.map(rule => `${rule.asset}: ${rule.patterns.join(', ')}`).join('\n')
 }
 
 /**

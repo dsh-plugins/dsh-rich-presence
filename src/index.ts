@@ -23,7 +23,7 @@ import { DiscordClient, type ClientConfig } from './discord/client.ts'
 import type { ClientLogger } from './discord/client.ts'
 import { FocusTracker, countSubagents, snapshotOf, type ProjectionReadout } from './focus.ts'
 import { Publisher, LogTransport, type Transport } from './publish.ts'
-import { renderActivity, type ActivityPayload, type UsageTotals } from './render.ts'
+import { DEFAULT_MODEL_IMAGES, renderActivity, type ActivityPayload, type UsageTotals } from './render.ts'
 import {
   DEFAULT_KEYS,
   DEFAULTS,
@@ -98,9 +98,14 @@ export const Config = z.object({
       .description('Template for the small-image hover text.'),
     largeImage: z.string().default('')
       .description('Asset name of the large image, uploaded to the Discord application.'),
-    smallImageRunning: z.string().default('')
+    modelImages: z.array(z.object({
+      asset: z.string(),
+      patterns: z.array(z.string()),
+    })).default(DEFAULT_MODEL_IMAGES)
+      .description('Rules that pick the large image from the running model: a keyword matches when it is the start of one word of the model id, and the first matching rule wins. An unmatched model uses largeImage.'),
+    smallImageRunning: z.string().default('deepseek_harness')
       .description('Asset name of the small image while the agent works.'),
-    smallImageIdle: z.string().default('')
+    smallImageIdle: z.string().default('deepseek_harness')
       .description('Asset name of the small image while the agent is idle.'),
     labels: z.dict(z.string()).default({})
       .description('Phase wording overrides, such as { thinking: "思考" }. Keys: approval, compacting, tool ({tool} is replaced), toolHidden, thinking, working, queued, idle.'),
